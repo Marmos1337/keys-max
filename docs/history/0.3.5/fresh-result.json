@@ -1,0 +1,19 @@
+{
+  "passed": 9,
+  "failed": 0,
+  "version": "0.3.4",
+  "mode": "clean temporary source copy + real Node HTTP / SQLite",
+  "checks": [
+    "Clean source copy has no working .env",
+    "Setup creates .env and does not overwrite it on repeat",
+    "Real HTTP health/config report version 0.3.4",
+    "App modules/styles and both public document pages return 200",
+    "Private state requires authentication",
+    "Actual property update and uploaded cover are stored through HTTP",
+    "Guide progress survives server restart",
+    "Session, property and exact uploaded bytes survive restart",
+    "SQLite schema remains 3; rental/participant/recurrence tables intact"
+  ],
+  "max_live_tested": false,
+  "production_data_used": false
+}

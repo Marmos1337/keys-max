@@ -1,0 +1,21 @@
+{
+  "name": "keys-max",
+  "version": "0.3.6",
+  "private": true,
+  "type": "module",
+  "description": "Ключи — MAX Mini App и Bot. Без npm-зависимостей в runtime.",
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server/index.mjs",
+    "dev": "node --env-file-if-exists=.env --watch server/index.mjs",
+    "setup": "node scripts/setup.mjs",
+    "test": "node scripts/test.mjs",
+    "check": "node scripts/check.mjs",
+    "max:check": "node --env-file-if-exists=.env scripts/max.mjs check",
+    "max:register": "node --env-file-if-exists=.env scripts/max.mjs register",
+    "backup": "node --env-file-if-exists=.env scripts/backup.mjs",
+    "restore": "node --env-file-if-exists=.env scripts/restore.mjs"
+  }
+}

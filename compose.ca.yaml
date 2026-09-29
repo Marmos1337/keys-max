@@ -1,0 +1,7 @@
+# Optional: add only when an administrator verified the CA chain needed by MAX.
+services:
+  app:
+    environment:
+      NODE_EXTRA_CA_CERTS: /app/certs/max-ca.pem
+    volumes:
+      - ./certs/max-ca.pem:/app/certs/max-ca.pem:ro

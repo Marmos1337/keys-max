@@ -1,0 +1,63 @@
+/** Local QA fixture server. Never imported by production startup. */
+import { writeFileSync, mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { openDatabase } from '../server/db.mjs';
+import { makeConfig } from '../server/config.mjs';
+import { createServer } from '../server/http.mjs';
+import { seedDemo } from '../server/seed.mjs';
+import { createSession } from '../server/auth.mjs';
+import * as D from '../server/domain.mjs';
+import { createUnit } from '../server/rental.mjs';
+
+const config=makeConfig({...process.env, APP_MODE:'test', SESSION_SECRET:'local-visual-test-secret-only-0123456789', SUPPORT_EMAIL:'reports@udav.team', OPERATOR_NAME:'Ключи'});
+const db=openDatabase(config.dataDir); seedDemo(db,config);
+const user=(name,role='tenant')=>{const id=randomUUID();db.run('INSERT INTO users(id,name,role,created_at) VALUES(?,?,?,?)',id,name,role,D.nowISO());return db.get('SELECT * FROM users WHERE id=?',id);};
+const owner=db.get("SELECT * FROM users WHERE id='demo-owner'"), tenant=db.get("SELECT * FROM users WHERE id='demo-tenant'");
+const dual=user('Наталья Александровна','owner'),alice=user('Анна-Мария'),bob=user('Илья'),carol=user('Вера');
+const now=D.dateInZone(),ym=now.slice(0,7),year=now.slice(0,4);
+const input={title:'Квартира на Северной',address:'Усинск, Северная улица, дом 5, квартира 153',rooms:3,area:72,start:year+'-01-01',end:(Number(year)+2)+'-12-31',rent:7100000,deposit:7100000,due_day:5,meter_day:25,terms:'Отдельные комнаты. Покупки и посещения согласуются заранее.'};
+let rooms,la,lb,recordIds={},emptyA,archived;
+db.tx(()=>{
+ rooms=D.createApartment(db,dual,{...input,rental_mode:'rooms',unit_title:'Комната с балконом'});
+ la=db.get('SELECT * FROM leases WHERE apartment_id=?',rooms.id);
+ const ub=createUnit(db,dual,rooms.id,{title:'Комната у окна'});
+ lb=D.createLease(db,dual,rooms.id,{...input,rent:2800000,unit_id:ub.id});
+ const invite=(who,l,person)=>D.joinInvite(db,person,D.createInvite(db,who,l.id).code);
+ invite(dual,la,alice);invite(dual,la,bob);invite(dual,lb,carol);
+ // The same account both owns rooms and rents a different apartment.
+ const other=db.get("SELECT * FROM leases WHERE tenant_id='demo-tenant'");invite(owner,other,dual);
+ db.run("UPDATE users SET role='owner' WHERE id=?",dual.id);
+ const create=(kind,payload,who=dual,title='Проверка: '+kind)=>D.createRecord(db,who,{lease_id:la.id,kind,title,payload},config);
+ const act=(r,who,action,body={})=>D.actionRecord(db,who,r.id,{version:db.get('SELECT version FROM records WHERE id=?',r.id).version,action,...body});
+ recordIds.ticket=create('ticket',{description:'Необходимо проверить кран. Удобное время — после 18:00.',room:'Кухня',priority:'normal'},alice,'Протекает кран').id;
+ const solved=create('ticket',{description:'Дверца шкафа закрывается неплотно.',room:'Гостиная',priority:'normal'},alice,'Заявка ожидает подтверждения');act(solved,dual,'resolve',{note:'Петли отрегулированы, зазор устранён.'});recordIds.resolved=solved.id;
+ const purchase=create('purchase',{description:'Замена сломанного смесителя. Прикладываю чек.',amount:459000,purchase_date:now},alice,'Смеситель для кухни');recordIds.purchase=purchase.id;
+ const visit=create('visit',{reason:'Обсудить ремонт и проверить работу смесителя.',start:new Date(Date.now()+7*86400000).toISOString(),end:new Date(Date.now()+7*86400000+3600000).toISOString()},dual,'Согласование посещения');recordIds.visit=visit.id;
+ const bill=create('charge',{amount:7100000,period:ym,due:ym+'-28'},dual,'Аренда — платёж на проверке');act(bill,alice,'claim',{amount:1500000,note:'Перевела свою часть, ожидаю подтверждение.'});recordIds.charge=bill.id;
+ const paid=create('charge',{amount:7100000,period:ym,due:ym+'-05'},dual,'Подтверждённый платёж');act(paid,dual,'record_payment',{amount:7100000,payer_id:bob.id,note:'Проверочный перевод.'});recordIds.paid=paid.id;
+ recordIds.expense=create('expense',{amount:880050,date:now,description:'Запчасти и работа мастера.'},dual,'Расход собственника').id;
+ const future=new Date(Number(year),Number(ym.slice(5,7))+1,1,12).toISOString().slice(0,7);
+ recordIds.terms=create('terms',{rent:7300000,terms:'Предлагаем новые условия на следующий период. Существующие платежи не меняются.',effective_month:future,due_day:5},dual,'Согласование новых условий').id;
+ recordIds.termination=create('termination',{date:now,reason:'Планируем выезд и осмотр квартиры.'},alice,'Завершение аренды — согласование').id;
+ const m=D.createMeter(db,dual,la.id,{label:'Электроэнергия — комната с балконом',kind:'electricity',unit:'кВт·ч',baseline:678000}).meters[0];
+ const common=D.createMeter(db,dual,la.id,{label:'Горячая вода — общий счётчик',kind:'hot_water',unit:'м³',scope:'apartment',baseline:125000}).meters[0];
+ D.createMeter(db,dual,la.id,{label:'Архивный счётчик',kind:'other',unit:'ед.'}).meters.forEach(m=>D.updateMeter(db,dual,m.id,{version:m.version,active:false}));
+ recordIds.reading=create('reading',{values:[{meter_id:m.id,value:679300},{meter_id:common.id,value:130000}]},alice,'Показания').id;
+ mkdirSync(path.join(config.dataDir,'uploads'),{recursive:true});
+ const fileId=randomUUID(), fileName='Подписанный договор аренды комнаты с балконом — подробные условия сторон.txt';
+ const content='Только синтетическая QA-запись; это не реальный договор.';
+ writeFileSync(path.join(config.dataDir,'uploads',fileId),content);
+ db.run('INSERT INTO files VALUES(?,?,?,?,?,?,?,?,?,?)',fileId,rooms.id,la.id,null,dual.id,fileName,'text/plain',Buffer.byteLength(content),fileId,D.nowISO());
+ const doc=D.createRecord(db,dual,{lease_id:la.id,kind:'document',title:'Договор комнаты с балконом',payload:{category:'contract',description:'Тестовый документ.'},files:[fileId]},config);recordIds.document=doc.id;
+ D.addComment(db,alice,recordIds.ticket,{text:'Я могу быть дома после 18:00. Пришлите время заранее.'});D.addComment(db,dual,recordIds.ticket,{text:'Договорились. Мастер подойдёт к 19:00.'});
+ // Empty/archived object, no meters: important alternative UI states.
+ emptyA=D.createApartment(db,dual,{...input,title:'Свободная квартира',rental_mode:'whole',recurring_rent:false,meters_enabled:false});
+ const le=db.get('SELECT * FROM leases WHERE apartment_id=?',emptyA.id);D.archiveDraftLease(db,dual,le.id);archived=le.id;
+});
+const emptyOwner=user('Новый собственник','owner'),emptyTenant=user('Новый арендатор'),guideOpens=user('Гид: открытия','owner'),guideVisits=user('Гид: переходы','owner'),guideDismiss=user('Гид: скрытие','owner');
+const people={owner,tenant,dual,alice,bob,carol,emptyOwner,emptyTenant,guideOpens,guideVisits,guideDismiss};
+const tokens=Object.fromEntries(Object.entries(people).map(([k,v])=>[k,createSession(db,v.id).token]));
+const server=createServer(db,config);
+server.listen(config.port,config.host,()=>writeFileSync(process.env.QA_READY,JSON.stringify({base:config.publicUrl,tokens,ids:Object.fromEntries(Object.entries(people).map(([k,v])=>[k,v.id])),apartments:{rooms:rooms.id,empty:emptyA.id},leases:{a:la.id,b:lb.id,archived},records:recordIds})));
+process.on('SIGTERM',()=>server.close(()=>{db.close();process.exit(0);}));

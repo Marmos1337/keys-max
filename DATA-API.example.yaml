@@ -1,0 +1,37 @@
+# PROJECT-LOCAL EXAMPLE, not a claimed official evaluation schema.
+# Align field names with the actual evaluator contract before submission.
+schema_version: 1
+project: "Ключи / MAX × Умный город"
+base_url: "https://keys.udav.team"
+authentication:
+  description: "Session from signed MAX initData. No fixed passwords."
+  header: "Authorization: Bearer <TEST_SESSION_TOKEN>"
+checks:
+  - name: public_health
+    method: GET
+    path: /api/health
+    role: anonymous
+    expected_status: [200]
+    expected_content_type: application/json
+    required_fields: [ok, version, mode]
+  - name: tenant_state
+    method: GET
+    path: /api/state
+    role: tenant
+    expected_status: [200]
+    expected_content_type: application/json
+    required_fields: [user, apartments, units, leases, records, files, recurring_rules, meter_history]
+  - name: owner_state
+    method: GET
+    path: /api/state
+    role: owner
+    expected_status: [200]
+    expected_content_type: application/json
+    required_fields: [user, apartments, units, leases, records, files, recurring_rules, meter_history]
+  - name: missing_session
+    method: GET
+    path: /api/state
+    role: anonymous
+    expected_status: [401]
+    expected_content_type: application/json
+    required_fields: [error, requestId]

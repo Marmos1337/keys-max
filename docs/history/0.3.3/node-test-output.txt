@@ -1,0 +1,819 @@
+
+> keys-max@0.3.1 check
+> node scripts/check.mjs
+
+Syntax OK: 41 JavaScript files
+TAP version 13
+# (node:3602) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Apartment edit: real metadata update leaves active lease and payments unchanged
+ok 1 - Apartment edit: real metadata update leaves active lease and payments unchanged
+  ---
+  duration_ms: 42.697687
+  type: 'test'
+  ...
+# Subtest: Apartment edit: tenant, stranger and role spoof cannot edit owner property
+ok 2 - Apartment edit: tenant, stranger and role spoof cannot edit owner property
+  ---
+  duration_ms: 13.963413
+  type: 'test'
+  ...
+# Subtest: Apartment edit: rejects stale version, invalid area and empty name
+ok 3 - Apartment edit: rejects stale version, invalid area and empty name
+  ---
+  duration_ms: 16.167164
+  type: 'test'
+  ...
+# Subtest: Apartment draft: dates and terms may be edited only before a tenant joins
+ok 4 - Apartment draft: dates and terms may be edited only before a tenant joins
+  ---
+  duration_ms: 15.24102
+  type: 'test'
+  ...
+# Subtest: Apartment draft: date validation rolls back metadata together
+ok 5 - Apartment draft: date validation rolls back metadata together
+  ---
+  duration_ms: 14.223071
+  type: 'test'
+  ...
+# Subtest: HTTP apartment edit: idempotent double save increments version only once
+ok 6 - HTTP apartment edit: idempotent double save increments version only once
+  ---
+  duration_ms: 52.572229
+  type: 'test'
+  ...
+# Subtest: Cover: secure image upload and atomic binding work for an existing property
+ok 7 - Cover: secure image upload and atomic binding work for an existing property
+  ---
+  duration_ms: 37.242084
+  type: 'test'
+  ...
+# Subtest: Cover: a staged photo can be attached while creating a new apartment
+ok 8 - Cover: a staged photo can be attached while creating a new apartment
+  ---
+  duration_ms: 26.058909
+  type: 'test'
+  ...
+# Subtest: Cover: wrong author or another property cannot reuse a bound upload
+ok 9 - Cover: wrong author or another property cannot reuse a bound upload
+  ---
+  duration_ms: 24.740422
+  type: 'test'
+  ...
+# Subtest: Cover: active tenant may see but cannot change it; no public/stranger access
+ok 10 - Cover: active tenant may see but cannot change it; no public/stranger access
+  ---
+  duration_ms: 34.313958
+  type: 'test'
+  ...
+# Subtest: Cover: archived tenant loses current-photo access even with a previous ticket
+ok 11 - Cover: archived tenant loses current-photo access even with a previous ticket
+  ---
+  duration_ms: 34.759885
+  type: 'test'
+  ...
+# Subtest: Cover: replacement/reset invalidate previous image links
+ok 12 - Cover: replacement/reset invalidate previous image links
+  ---
+  duration_ms: 30.601827
+  type: 'test'
+  ...
+# Subtest: Cover: file validation rejects spoofed extension, unsupported types and oversize
+ok 13 - Cover: file validation rejects spoofed extension, unsupported types and oversize
+  ---
+  duration_ms: 38.843266
+  type: 'test'
+  ...
+# Subtest: Cover: image tickets expire and exported JSON does not contain them
+ok 14 - Cover: image tickets expire and exported JSON does not contain them
+  ---
+  duration_ms: 23.510488
+  type: 'test'
+  ...
+# Subtest: Cover maintenance: unused uploads expire, current photos persist
+ok 15 - Cover maintenance: unused uploads expire, current photos persist
+  ---
+  duration_ms: 23.608376
+  type: 'test'
+  ...
+# (node:3613) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: MAX: validates authentic WebAppData and signed start parameter
+ok 16 - MAX: validates authentic WebAppData and signed start parameter
+  ---
+  duration_ms: 2.167068
+  type: 'test'
+  ...
+# Subtest: MAX: rejects tampered user or wrong token
+ok 17 - MAX: rejects tampered user or wrong token
+  ---
+  duration_ms: 0.851353
+  type: 'test'
+  ...
+# Subtest: MAX: rejects duplicate hash and duplicate data keys
+ok 18 - MAX: rejects duplicate hash and duplicate data keys
+  ---
+  duration_ms: 0.352542
+  type: 'test'
+  ...
+# Subtest: MAX: rejects old and future initData
+ok 19 - MAX: rejects old and future initData
+  ---
+  duration_ms: 0.491275
+  type: 'test'
+  ...
+# Subtest: MAX: preserves exact JSON and Unicode when checking signature
+ok 20 - MAX: preserves exact JSON and Unicode when checking signature
+  ---
+  duration_ms: 0.399297
+  type: 'test'
+  ...
+# Subtest: MAX: rejects invalid or unsafe numerical user id
+ok 21 - MAX: rejects invalid or unsafe numerical user id
+  ---
+  duration_ms: 0.717534
+  type: 'test'
+  ...
+# Subtest: Constant-time comparison handles unequal lengths
+ok 22 - Constant-time comparison handles unequal lengths
+  ---
+  duration_ms: 0.147549
+  type: 'test'
+  ...
+# Subtest: Session tokens are hashed in storage and can be revoked
+ok 23 - Session tokens are hashed in storage and can be revoked
+  ---
+  duration_ms: 39.985292
+  type: 'test'
+  ...
+# Subtest: Expired sessions and malformed cookies are rejected
+ok 24 - Expired sessions and malformed cookies are rejected
+  ---
+  duration_ms: 16.843266
+  type: 'test'
+  ...
+# Subtest: Download ticket is signed, scoped and expiring
+ok 25 - Download ticket is signed, scoped and expiring
+  ---
+  duration_ms: 15.600463
+  type: 'test'
+  ...
+# Subtest: MAX user creation does not grant owner permissions
+ok 26 - MAX user creation does not grant owner permissions
+  ---
+  duration_ms: 20.569857
+  type: 'test'
+  ...
+# Subtest: Production requires secrets, HTTPS, bot and operator details
+ok 27 - Production requires secrets, HTTPS, bot and operator details
+  ---
+  duration_ms: 0.820494
+  type: 'test'
+  ...
+# Subtest: Validation rejects impossible dates, floats and long visits
+ok 28 - Validation rejects impossible dates, floats and long visits
+  ---
+  duration_ms: 0.186917
+  type: 'test'
+  ...
+# Subtest: Money/meter parsing never rounds extra decimals; text is escaped
+ok 29 - Money/meter parsing never rounds extra decimals; text is escaped
+  ---
+  duration_ms: 0.353544
+  type: 'test'
+  ...
+# (node:3624) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Deep links use configurable HTTPS host and distinguish Bot start from Mini App startapp
+ok 30 - Deep links use configurable HTTPS host and distinguish Bot start from Mini App startapp
+  ---
+  duration_ms: 40.173772
+  type: 'test'
+  ...
+# Subtest: Comment notification includes author and text, links directly to discussion and escapes HTML
+ok 31 - Comment notification includes author and text, links directly to discussion and escapes HTML
+  ---
+  duration_ms: 16.069281
+  type: 'test'
+  ...
+# Subtest: Long escaped message remains below 4000 characters with complete HTML entities
+ok 32 - Long escaped message remains below 4000 characters with complete HTML entities
+  ---
+  duration_ms: 16.315274
+  type: 'test'
+  ...
+# Subtest: Invitation Bot start only previews; acceptance binds lease then opens Mini App; callback replay is idempotent
+ok 33 - Invitation Bot start only previews; acceptance binds lease then opens Mini App; callback replay is idempotent
+  ---
+  duration_ms: 20.1955
+  type: 'test'
+  ...
+# Subtest: Invitation forwarded to a group does not register private membership there
+ok 34 - Invitation forwarded to a group does not register private membership there
+  ---
+  duration_ms: 14.331602
+  type: 'test'
+  ...
+# Subtest: Unknown/foreign record notification never exposes stale private title or text
+ok 35 - Unknown/foreign record notification never exposes stale private title or text
+  ---
+  duration_ms: 13.705361
+  type: 'test'
+  ...
+# (node:3635) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Bot: duplicate /start processed once; group messages ignored
+ok 36 - Bot: duplicate /start processed once; group messages ignored
+  ---
+  duration_ms: 47.118053
+  type: 'test'
+  ...
+# Subtest: Bot: callback authentic actor accepts once; stale callback cannot repeat
+ok 37 - Bot: callback authentic actor accepts once; stale callback cannot repeat
+  ---
+  duration_ms: 18.716814
+  type: 'test'
+  ...
+# Subtest: Bot: unrelated callback user cannot accept private visit
+ok 38 - Bot: unrelated callback user cannot accept private visit
+  ---
+  duration_ms: 16.571632
+  type: 'test'
+  ...
+# Subtest: Bot: notification buttons are contextual and deep link to record
+ok 39 - Bot: notification buttons are contextual and deep link to record
+  ---
+  duration_ms: 16.826464
+  type: 'test'
+  ...
+# Subtest: Bot: outbox respects notification opt-out even after queueing
+ok 40 - Bot: outbox respects notification opt-out even after queueing
+  ---
+  duration_ms: 13.257399
+  type: 'test'
+  ...
+# Subtest: Bot: API failure persisted and retried; auth token not in URL
+ok 41 - Bot: API failure persisted and retried; auth token not in URL
+  ---
+  duration_ms: 12.95667
+  type: 'test'
+  ...
+# Subtest: Bot: /stop and /notifications change preferences
+ok 42 - Bot: /stop and /notifications change preferences
+  ---
+  duration_ms: 13.267213
+  type: 'test'
+  ...
+# (node:3646) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Scope: tenant sees only own apartment, not owner private expenses
+ok 43 - Scope: tenant sees only own apartment, not owner private expenses
+  ---
+  duration_ms: 41.733366
+  type: 'test'
+  ...
+# Subtest: Changing role never unlocks another apartment or owner record
+ok 44 - Changing role never unlocks another apartment or owner record
+  ---
+  duration_ms: 13.825305
+  type: 'test'
+  ...
+# Subtest: Tenant cannot read or comment on another lease
+ok 45 - Tenant cannot read or comment on another lease
+  ---
+  duration_ms: 15.080331
+  type: 'test'
+  ...
+# Subtest: Ticket: open → in work → resolution → tenant confirmation
+ok 46 - Ticket: open → in work → resolution → tenant confirmation
+  ---
+  duration_ms: 16.410997
+  type: 'test'
+  ...
+# Subtest: Ticket: tenant can reopen; owner cannot confirm for tenant
+ok 47 - Ticket: tenant can reopen; owner cannot confirm for tenant
+  ---
+  duration_ms: 15.055692
+  type: 'test'
+  ...
+# Subtest: Optimistic version prevents stale write
+ok 48 - Optimistic version prevents stale write
+  ---
+  duration_ms: 13.706438
+  type: 'test'
+  ...
+# Subtest: Payments: tenant claim is not income before owner confirms
+ok 49 - Payments: tenant claim is not income before owner confirms
+  ---
+  duration_ms: 15.72991
+  type: 'test'
+  ...
+# Subtest: Payments: no overpayment, no tenant confirmation, no double posting
+ok 50 - Payments: no overpayment, no tenant confirmation, no double posting
+  ---
+  duration_ms: 16.314248
+  type: 'test'
+  ...
+# Subtest: Payments: reject requires reason and returns to unpaid
+ok 51 - Payments: reject requires reason and returns to unpaid
+  ---
+  duration_ms: 16.57737
+  type: 'test'
+  ...
+# Subtest: Purchases: approve and mark reimbursement are distinct; rent unchanged
+ok 52 - Purchases: approve and mark reimbursement are distinct; rent unchanged
+  ---
+  duration_ms: 18.273642
+  type: 'test'
+  ...
+# Subtest: Purchases: cannot self-approve or upload on behalf of tenant
+ok 53 - Purchases: cannot self-approve or upload on behalf of tenant
+  ---
+  duration_ms: 13.286312
+  type: 'test'
+  ...
+# Subtest: Meter readings: captures exact delta and rejects second submission
+ok 54 - Meter readings: captures exact delta and rejects second submission
+  ---
+  duration_ms: 15.232936
+  type: 'test'
+  ...
+# Subtest: Meter readings: reject rollback, unknown meters and fractional raw values
+ok 55 - Meter readings: reject rollback, unknown meters and fractional raw values
+  ---
+  duration_ms: 14.349915
+  type: 'test'
+  ...
+# Subtest: Visits: only opposite party accepts and counterproposal resets agreement
+ok 56 - Visits: only opposite party accepts and counterproposal resets agreement
+  ---
+  duration_ms: 16.305497
+  type: 'test'
+  ...
+# Subtest: Visits: cannot complete future visit or accept cancelled visit
+ok 57 - Visits: cannot complete future visit or accept cancelled visit
+  ---
+  duration_ms: 13.853967
+  type: 'test'
+  ...
+# Subtest: Terms: only tenant accepts; existing charges stay unchanged
+ok 58 - Terms: only tenant accepts; existing charges stay unchanged
+  ---
+  duration_ms: 16.348545
+  type: 'test'
+  ...
+# Subtest: Invites: independent invitations, single use and self-join denial
+ok 59 - Invites: independent invitations, single use and self-join denial
+  ---
+  duration_ms: 14.847311
+  type: 'test'
+  ...
+# Subtest: Invites: expired invitation grants no access
+ok 60 - Invites: expired invitation grants no access
+  ---
+  duration_ms: 13.015144
+  type: 'test'
+  ...
+# Subtest: New tenancy never inherits previous tenant records or documents
+ok 61 - New tenancy never inherits previous tenant records or documents
+  ---
+  duration_ms: 16.10908
+  type: 'test'
+  ...
+# Subtest: Termination: requires two sides and blocks unpaid balances
+ok 62 - Termination: requires two sides and blocks unpaid balances
+  ---
+  duration_ms: 18.73002
+  type: 'test'
+  ...
+# Subtest: Termination: resolved financial items allow read-only archive
+ok 63 - Termination: resolved financial items allow read-only archive
+  ---
+  duration_ms: 15.019941
+  type: 'test'
+  ...
+# Subtest: Recurring jobs are idempotent and monthly charge unique
+ok 64 - Recurring jobs are idempotent and monthly charge unique
+  ---
+  duration_ms: 30.932013
+  type: 'test'
+  ...
+# Subtest: Transaction rollback prevents orphan record after invalid attachment
+ok 65 - Transaction rollback prevents orphan record after invalid attachment
+  ---
+  duration_ms: 12.662156
+  type: 'test'
+  ...
+# (node:3657) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: HTTP: health, static app and CSP; database is never static
+ok 66 - HTTP: health, static app and CSP; database is never static
+  ---
+  duration_ms: 79.518847
+  type: 'test'
+  ...
+# Subtest: HTTP: anonymous state denied, authenticated tenant scoped
+ok 67 - HTTP: anonymous state denied, authenticated tenant scoped
+  ---
+  duration_ms: 33.713295
+  type: 'test'
+  ...
+# Subtest: HTTP: unsafe origin and missing client header rejected
+ok 68 - HTTP: unsafe origin and missing client header rejected
+  ---
+  duration_ms: 20.626827
+  type: 'test'
+  ...
+# Subtest: HTTP: idempotency returns same record and rejects changed payload
+ok 69 - HTTP: idempotency returns same record and rejects changed payload
+  ---
+  duration_ms: 24.931728
+  type: 'test'
+  ...
+# Subtest: HTTP: mutation requires idempotency key; arbitrary JSON rejected
+ok 70 - HTTP: mutation requires idempotency key; arbitrary JSON rejected
+  ---
+  duration_ms: 22.153247
+  type: 'test'
+  ...
+# Subtest: HTTP: REAL MAX signature login works without demo and sets secure cookie
+ok 71 - HTTP: REAL MAX signature login works without demo and sets secure cookie
+  ---
+  duration_ms: 24.619957
+  type: 'test'
+  ...
+# Subtest: HTTP: uploaded document persists, signed download works and other tenant denied
+ok 72 - HTTP: uploaded document persists, signed download works and other tenant denied
+  ---
+  duration_ms: 26.321265
+  type: 'test'
+  ...
+# Subtest: HTTP: owner-private document hidden even when tenant guesses file id
+ok 73 - HTTP: owner-private document hidden even when tenant guesses file id
+  ---
+  duration_ms: 26.434715
+  type: 'test'
+  ...
+# Subtest: HTTP: file extension spoof, HTML and oversized files rejected
+ok 74 - HTTP: file extension spoof, HTML and oversized files rejected
+  ---
+  duration_ms: 40.7425
+  type: 'test'
+  ...
+# Subtest: HTTP: unbound uploaded file cannot be attached by another person
+ok 75 - HTTP: unbound uploaded file cannot be attached by another person
+  ---
+  duration_ms: 29.406109
+  type: 'test'
+  ...
+# Subtest: HTTP: expiring tickets checked again at download time
+ok 76 - HTTP: expiring tickets checked again at download time
+  ---
+  duration_ms: 16.707421
+  type: 'test'
+  ...
+# Subtest: HTTP: export is scoped to user and excludes storage paths/tokens
+ok 77 - HTTP: export is scoped to user and excludes storage paths/tokens
+  ---
+  duration_ms: 21.475523
+  type: 'test'
+  ...
+# Subtest: HTTP: webhook rejects missing secret and deduplicates messages
+ok 78 - HTTP: webhook rejects missing secret and deduplicates messages
+  ---
+  duration_ms: 20.467332
+  type: 'test'
+  ...
+# Subtest: HTTP: logout revokes token immediately
+ok 79 - HTTP: logout revokes token immediately
+  ---
+  duration_ms: 17.799603
+  type: 'test'
+  ...
+# Subtest: SQLite: records survive separate connection / process restart
+ok 80 - SQLite: records survive separate connection / process restart
+  ---
+  duration_ms: 18.012819
+  type: 'test'
+  ...
+# (node:3668) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Maintenance: removes only old unbound uploads, preserves attached files
+ok 81 - Maintenance: removes only old unbound uploads, preserves attached files
+  ---
+  duration_ms: 43.643422
+  type: 'test'
+  ...
+# Subtest: Backup + restore: verifies files and preserves records, resets sessions
+ok 82 - Backup + restore: verifies files and preserves records, resets sessions
+  ---
+  duration_ms: 169.29854
+  type: 'test'
+  ...
+# Subtest: Production refuses to boot against demo database
+ok 83 - Production refuses to boot against demo database
+  ---
+  duration_ms: 91.602685
+  type: 'test'
+  ...
+# (node:3723) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Real schema v1 -> v3 preserves history, sessions, covers, pending payment and repeat-open
+ok 84 - Real schema v1 -> v3 preserves history, sessions, covers, pending payment and repeat-open
+  ---
+  duration_ms: 37.152455
+  type: 'test'
+  ...
+# Subtest: Real schema v2 -> v3 preserves history, sessions, covers, pending payment and repeat-open
+ok 85 - Real schema v2 -> v3 preserves history, sessions, covers, pending payment and repeat-open
+  ---
+  duration_ms: 13.045739
+  type: 'test'
+  ...
+# Subtest: Unsupported schema closes handle and is never downgraded
+ok 86 - Unsupported schema closes handle and is never downgraded
+  ---
+  duration_ms: 7.357617
+  type: 'test'
+  ...
+# (node:3734) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Awaiting tenant confirmation is not included in the completed ticket tab
+ok 87 - Awaiting tenant confirmation is not included in the completed ticket tab
+  ---
+  duration_ms: 43.010415
+  type: 'test'
+  ...
+# Subtest: Cancelled future bill does not inflate financial total or debt
+ok 88 - Cancelled future bill does not inflate financial total or debt
+  ---
+  duration_ms: 19.764761
+  type: 'test'
+  ...
+# Subtest: Date fields are explicit Russian text; month-edge default is valid
+ok 89 - Date fields are explicit Russian text; month-edge default is valid
+  ---
+  duration_ms: 0.433817
+  type: 'test'
+  ...
+# Subtest: Future rent change does not replace currently displayed rent or allow reversed chronology
+ok 90 - Future rent change does not replace currently displayed rent or allow reversed chronology
+  ---
+  duration_ms: 22.292761
+  type: 'test'
+  ...
+# Subtest: Joining co-tenant must explicitly agree an already accepted future visit
+ok 91 - Joining co-tenant must explicitly agree an already accepted future visit
+  ---
+  duration_ms: 19.081244
+  type: 'test'
+  ...
+# Subtest: Upcoming payment is previewed before invoice generation without claiming a bank payment
+ok 92 - Upcoming payment is previewed before invoice generation without claiming a bank payment
+  ---
+  duration_ms: 0.564461
+  type: 'test'
+  ...
+# (node:3745) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Recurring bill appears 14 days in advance, stays idempotent and does not multiply by tenants
+ok 93 - Recurring bill appears 14 days in advance, stays idempotent and does not multiply by tenants
+  ---
+  duration_ms: 67.550606
+  type: 'test'
+  ...
+# Subtest: Short month and leap year clamp requested day 31 without JS date overflow
+ok 94 - Short month and leap year clamp requested day 31 without JS date overflow
+  ---
+  duration_ms: 31.655507
+  type: 'test'
+  ...
+# Subtest: Future change retains invoice history and keeps January frozen
+ok 95 - Future change retains invoice history and keeps January frozen
+  ---
+  duration_ms: 36.863118
+  type: 'test'
+  ...
+# Subtest: Pause and resume skip paused months, deletion retains unpaid invoice history
+ok 96 - Pause and resume skip paused months, deletion retains unpaid invoice history
+  ---
+  duration_ms: 65.625029
+  type: 'test'
+  ...
+# Subtest: Rule creation validates range, advance window and owner access
+ok 97 - Rule creation validates range, advance window and owner access
+  ---
+  duration_ms: 18.450682
+  type: 'test'
+  ...
+# Subtest: Recurring changes use optimistic version and cannot backdate beyond an existing future invoice
+ok 98 - Recurring changes use optimistic version and cannot backdate beyond an existing future invoice
+  ---
+  duration_ms: 32.638994
+  type: 'test'
+  ...
+# Subtest: Auto rent cannot be increased through rule editor without all residents agreeing
+ok 99 - Auto rent cannot be increased through rule editor without all residents agreeing
+  ---
+  duration_ms: 15.431662
+  type: 'test'
+  ...
+# Subtest: Two distinct monthly charges may share one month without accidental deduplication
+ok 100 - Two distinct monthly charges may share one month without accidental deduplication
+  ---
+  duration_ms: 26.41798
+  type: 'test'
+  ...
+# Subtest: Repeat checkbox creates first bill now and a rule without regenerating that first bill
+ok 101 - Repeat checkbox creates first bill now and a rule without regenerating that first bill
+  ---
+  duration_ms: 35.647402
+  type: 'test'
+  ...
+# Subtest: Future charge is cancelled on mutually accepted early termination only when untouched
+ok 102 - Future charge is cancelled on mutually accepted early termination only when untouched
+  ---
+  duration_ms: 21.166362
+  type: 'test'
+  ...
+# (node:3756) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Whole apartment accepts three paying tenants and creates one shared rent bill, not three
+ok 103 - Whole apartment accepts three paying tenants and creates one shared rent bill, not three
+  ---
+  duration_ms: 59.042556
+  type: 'test'
+  ...
+# Subtest: Independent rooms each have their own household and whole-unit option remains present
+ok 104 - Independent rooms each have their own household and whole-unit option remains present
+  ---
+  duration_ms: 19.09439
+  type: 'test'
+  ...
+# Subtest: Room documents, receipts, discussions, events and records are not disclosed to another room
+ok 105 - Room documents, receipts, discussions, events and records are not disclosed to another room
+  ---
+  duration_ms: 19.659154
+  type: 'test'
+  ...
+# Subtest: Owner-only financial record stays invisible even to co-tenants
+ok 106 - Owner-only financial record stays invisible even to co-tenants
+  ---
+  duration_ms: 16.492385
+  type: 'test'
+  ...
+# Subtest: Room editing requires ownership and current version
+ok 107 - Room editing requires ownership and current version
+  ---
+  duration_ms: 16.229795
+  type: 'test'
+  ...
+# Subtest: Empty lease can be archived, but an occupied lease cannot be silently removed
+ok 108 - Empty lease can be archived, but an occupied lease cannot be silently removed
+  ---
+  duration_ms: 18.258544
+  type: 'test'
+  ...
+# Subtest: Database itself rejects whole/room overlap, not just the HTTP validation
+ok 109 - Database itself rejects whole/room overlap, not just the HTTP validation
+  ---
+  duration_ms: 14.763972
+  type: 'test'
+  ...
+# Subtest: Independent joint payment claims reserve remaining amount and owner confirms each exactly once
+ok 110 - Independent joint payment claims reserve remaining amount and owner confirms each exactly once
+  ---
+  duration_ms: 19.149289
+  type: 'test'
+  ...
+# Subtest: Rejected payment releases reserved sum, stale version never duplicates it
+ok 111 - Rejected payment releases reserved sum, stale version never duplicates it
+  ---
+  duration_ms: 18.683186
+  type: 'test'
+  ...
+# Subtest: Manual payment validates named payer against correct tenancy
+ok 112 - Manual payment validates named payer against correct tenancy
+  ---
+  duration_ms: 17.96107
+  type: 'test'
+  ...
+# Subtest: Ticket needs original reporter confirmation; co-tenant can report persisting problem
+ok 113 - Ticket needs original reporter confirmation; co-tenant can report persisting problem
+  ---
+  duration_ms: 18.965043
+  type: 'test'
+  ...
+# Subtest: All co-tenants agree visit; counterproposal clears old consent
+ok 114 - All co-tenants agree visit; counterproposal clears old consent
+  ---
+  duration_ms: 22.456778
+  type: 'test'
+  ...
+# Subtest: Joining household adds required approval to unresolved proposals
+ok 115 - Joining household adds required approval to unresolved proposals
+  ---
+  duration_ms: 18.64669
+  type: 'test'
+  ...
+# Subtest: All participants agree termination before owner can finalize; archive stays accessible
+ok 116 - All participants agree termination before owner can finalize; archive stays accessible
+  ---
+  duration_ms: 19.544368
+  type: 'test'
+  ...
+# Subtest: Apartment-level and room meters coexist; common numeric readings are shared but attachments are not
+ok 117 - Apartment-level and room meters coexist; common numeric readings are shared but attachments are not
+  ---
+  duration_ms: 21.183659
+  type: 'test'
+  ...
+# Subtest: Configurable channels support duplicate types, gas, heat and arbitrary names, no fixed defaults
+ok 118 - Configurable channels support duplicate types, gas, heat and arbitrary names, no fixed defaults
+  ---
+  duration_ms: 17.701497
+  type: 'test'
+  ...
+# Subtest: Added channel can be submitted in same month; disabling preserves history; replacement uses new baseline
+ok 119 - Added channel can be submitted in same month; disabling preserves history; replacement uses new baseline
+  ---
+  duration_ms: 23.08744
+  type: 'test'
+  ...
+# Subtest: HTTP invitations use bot start, and multiple tenant file routes remain isolated
+ok 120 - HTTP invitations use bot start, and multiple tenant file routes remain isolated
+  ---
+  duration_ms: 59.769964
+  type: 'test'
+  ...
+# (node:3767) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: Shared button is not an implicit form submit and keeps action identifiers
+ok 121 - Shared button is not an implicit form submit and keeps action identifiers
+  ---
+  duration_ms: 0.897983
+  type: 'test'
+  ...
+# Subtest: Icon-only edit has an accessible name and the same button component
+ok 122 - Icon-only edit has an accessible name and the same button component
+  ---
+  duration_ms: 0.218457
+  type: 'test'
+  ...
+# Subtest: Pill tabs escape user labels, mark one pressed button, keep data routes
+ok 123 - Pill tabs escape user labels, mark one pressed button, keep data routes
+  ---
+  duration_ms: 0.278917
+  type: 'test'
+  ...
+# Subtest: Cards, rows and statistics share a single surface family
+ok 124 - Cards, rows and statistics share a single surface family
+  ---
+  duration_ms: 0.321623
+  type: 'test'
+  ...
+# Subtest: Domain tile and hint use identical colour tokens rather than inline colours
+ok 125 - Domain tile and hint use identical colour tokens rather than inline colours
+  ---
+  duration_ms: 0.229868
+  type: 'test'
+  ...
+# Subtest: Detailed records retain the correct parent navigation and semantic tone
+ok 126 - Detailed records retain the correct parent navigation and semantic tone
+  ---
+  duration_ms: 0.236074
+  type: 'test'
+  ...
+# Subtest: Owner apartment pills, section tabs and repeated room actions use the common components
+ok 127 - Owner apartment pills, section tabs and repeated room actions use the common components
+  ---
+  duration_ms: 46.53361
+  type: 'test'
+  ...
+# Subtest: Lists keep their actual records while reusing the shared row surface
+ok 128 - Lists keep their actual records while reusing the shared row surface
+  ---
+  duration_ms: 18.379268
+  type: 'test'
+  ...
+# Subtest: Desktop and mobile nav each have one accessible current item on a record page
+ok 129 - Desktop and mobile nav each have one accessible current item on a record page
+  ---
+  duration_ms: 15.781311
+  type: 'test'
+  ...
+# Subtest: Dark theme is token-based; no late white-rectangle or purple-unread overrides
+ok 130 - Dark theme is token-based; no late white-rectangle or purple-unread overrides
+  ---
+  duration_ms: 0.659083
+  type: 'test'
+  ...
+1..130
+# tests 130
+# suites 0
+# pass 130
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3926.345258

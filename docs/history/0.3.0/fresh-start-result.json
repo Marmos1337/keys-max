@@ -1,0 +1,20 @@
+{
+  "date": "2026-09-24",
+  "version": "0.3.0",
+  "node": "v22.16.0",
+  "mode": "clean extracted-copy equivalent, real localhost HTTP, synthetic demo",
+  "checks": [
+    "setup creates unique secrets, repeated setup preserves .env",
+    "clean startup reports version 0.3.0",
+    "public root, privacy, terms, legal CSS are served without auth and exact bytes",
+    "new frontend modules and styles served",
+    "no anonymous state or private source/config/data exposure",
+    "room-mode apartment creates whole option and separate room with meter switch",
+    "restart preserves created apartment, units, and lease without duplicate migration",
+    "persistent SQLite schema_version=3"
+  ],
+  "max_live_tested": false,
+  "docker_tested": false,
+  "passed": 8,
+  "failed": 0
+}

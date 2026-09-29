@@ -1,0 +1,22 @@
+/* Public documents reuse styles.css tokens and surface/button components. */
+.legal { max-width: 860px; margin: 28px auto; padding: 36px; }
+.legal header { margin-bottom: 28px; }
+.legal .legal-brand { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 30px; }
+.legal .logo { width: 154px; height: auto; }
+.legal h1 { margin-bottom: 10px; }
+.legal .meta { color: var(--muted); font-size: 13px; }
+.legal section { margin: 26px 0; }
+.legal h2 { font-size: 18px; margin-bottom: 12px; }
+.legal p, .legal li { font-size: 15px; line-height: 1.75; color: var(--text); }
+.legal p { margin-bottom: 12px; }
+.legal ul { margin: 0 0 12px; padding-left: 23px; }
+.legal li { margin-bottom: 7px; }
+.legal a:not(.btn) { color: var(--blue-strong); }
+@media (max-width:760px) {
+  .legal { margin: 16px 14px; padding: 24px 20px; }
+  .legal .legal-brand { flex-wrap: wrap; margin-bottom: 24px; }
+  .legal .btn { min-height: 42px; padding: 10px 12px; font-size: 12px; }
+  .legal .logo { width: 125px; }
+  .legal h1 { font-size: 25px; }
+  .legal p, .legal li { font-size: 14px; }
+}

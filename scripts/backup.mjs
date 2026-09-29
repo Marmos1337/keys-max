@@ -1,0 +1,11 @@
+import {existsSync,mkdirSync,cpSync,writeFileSync,readFileSync,renameSync,rmSync,readdirSync} from 'node:fs';import path from 'node:path';import {createHash} from 'node:crypto';import {DatabaseSync} from 'node:sqlite';import {makeConfig} from '../server/config.mjs';
+// Offline backup keeps database + uploads from the same stopped application.
+// Explicit flag prevents accidentally taking a half-consistent live file copy.
+try{
+ if(!process.argv.includes('--stopped'))throw Error('Сначала остановите приложение. Затем: npm run backup -- --stopped');
+ const c=makeConfig(),source=path.join(c.dataDir,'keys.sqlite');if(!existsSync(source))throw Error('База не найдена: '+source);
+ const destIndex=process.argv.indexOf('--to'),root=path.resolve(destIndex>=0?process.argv[destIndex+1]:'backups');if(root===c.dataDir||root.startsWith(c.dataDir+path.sep))throw Error('Резервная копия должна находиться вне DATA_DIR.');
+ mkdirSync(root,{recursive:true,mode:0o700});const name='keys-'+new Date().toISOString().replace(/[:.]/g,'-'),target=path.join(root,name),temp=target+'.partial';mkdirSync(temp,{mode:0o700});
+ try{const db=new DatabaseSync(source);try{if(db.prepare('PRAGMA integrity_check').get().integrity_check!=='ok')throw Error('integrity_check failed');db.exec(`VACUUM INTO '${path.join(temp,'keys.sqlite').replaceAll("'","''")}'`);}finally{db.close();}if(existsSync(path.join(c.dataDir,'uploads')))cpSync(path.join(c.dataDir,'uploads'),path.join(temp,'uploads'),{recursive:true});
+ const files=[];function scan(dir){for(const x of readdirSync(dir,{withFileTypes:true})){const file=path.join(dir,x.name);if(x.isSymbolicLink())throw Error('Symbolic links are not allowed in backup');if(x.isDirectory())scan(file);else{const bytes=readFileSync(file);files.push({path:path.relative(temp,file).split(path.sep).join('/'),size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')});}}}scan(temp);writeFileSync(path.join(temp,'manifest.json'),JSON.stringify({format:1,version:'0.3.1',created_at:new Date().toISOString(),mode:c.mode,files},null,2),{mode:0o600});renameSync(temp,target);console.log('Резервная копия:',target);console.log('.env и сертификаты сохраняйте отдельно в защищённом месте.');}catch(e){rmSync(temp,{recursive:true,force:true});throw e;}
+}catch(e){console.error(e.message);process.exit(1);}

@@ -1,0 +1,14 @@
+{
+  "public/privacy.html": {
+    "unchanged": true,
+    "sha256": "8f7919cee47d2f9f6cc5b902b26eae89a55c73101f57a450cedbdb589af5d0f0"
+  },
+  "public/terms.html": {
+    "unchanged": true,
+    "sha256": "650b51bd139a6734a64d4895c60812403ff84f33863c025580a8aa4ab547d55b"
+  },
+  "public/legal.css": {
+    "unchanged": true,
+    "sha256": "4434e3b27d5c271a42408d6d04b70b6909a875260ba8451be44ca655b9014028"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "passed": 8,
+  "failed": 0,
+  "groups": [
+    "repair workflow and comments",
+    "purchase with receipt/approval/compensation",
+    "meter submission",
+    "payment claim and owner confirmation",
+    "visit counterproposal and agreement",
+    "documents",
+    "profile/notifications",
+    "mobile+desktop layouts"
+  ],
+  "mode": "embedded DOM + real HTTP bridge",
+  "page_errors": [],
+  "max_live_tested": false
+}

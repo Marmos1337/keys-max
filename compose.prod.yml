@@ -1,0 +1,23 @@
+# Production overlay for «Ключи» on marmic-production.
+# Caddy is NOT used: ports 80/81/443 are already owned by Nginx Proxy Manager.
+# The app is published on 127.0.0.1:3002; public traffic arrives via the NPM
+# proxy host (keys.udav.team) over the shared proxy network.
+#
+# Start:
+#   docker compose -p keys-prod -f compose.yaml -f compose.prod.yml config --quiet
+#   docker compose -p keys-prod -f compose.yaml -f compose.prod.yml up -d --build
+services:
+  app:
+    container_name: keys-app
+    environment:
+      APP_MODE: production
+      TRUST_PROXY: "1"
+    extra_hosts:
+      - "keys.udav.team:37.204.116.197"
+    networks:
+      - default
+      - keys-proxy-net
+networks:
+  keys-proxy-net:
+    external: true
+    name: learnio_news_proxy_net

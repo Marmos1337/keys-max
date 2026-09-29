@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+data
+backups
+**/*.sqlite*
+**/*.pem
+**/*.key
+**/*.crt
+node_modules
+__pycache__
+test-results
+preview
+*.zip

@@ -1,0 +1,3551 @@
+openapi: 3.1.0
+info:
+  title: Ключи API
+  version: 0.3.6
+  description: 'Реализованный API «Ключи» 0.3.6. Квартира/комнаты, группы арендаторов, настраиваемые счётчики и
+    регулярные начисления. Payload и переходы: docs/API.md. Суммы в копейках, показания в тысячных. Перевод денег
+    не выполняется.'
+servers:
+- url: /
+  description: Same origin
+security:
+- BearerAuth: []
+- CookieSession: []
+paths:
+  /api/health:
+    get:
+      summary: health — доступность приложения и БД
+      operationId: health
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security: []
+  /api/config:
+    get:
+      summary: config — публичные настройки, без секретов
+      operationId: config
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security: []
+  /api/auth/demo:
+    post:
+      summary: demoLogin — только в demo/test
+      operationId: demoLogin
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security: []
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - role
+              properties:
+                role:
+                  enum:
+                  - tenant
+                  - owner
+  /api/auth/max:
+    post:
+      summary: maxLogin — проверка подписанной строки MAX
+      operationId: maxLogin
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security: []
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - initData
+              properties:
+                initData:
+                  type: string
+                  maxLength: 16384
+  /api/auth/logout:
+    post:
+      summary: logout — завершить текущий сеанс
+      operationId: logout
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /api/auth/revoke:
+    post:
+      summary: revokeSessions — завершить все сеансы
+      operationId: revokeSessions
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /api/state:
+    get:
+      summary: state — доступный снимок данных
+      operationId: state
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/State'
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/profile:
+    post:
+      summary: updateProfile — имя, режим и настройки
+      operationId: updateProfile
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - role
+              properties:
+                name:
+                  type: string
+                  maxLength: 120
+                role:
+                  enum:
+                  - tenant
+                  - owner
+                settings:
+                  type: object
+                  additionalProperties: true
+  /api/apartments:
+    post:
+      summary: createApartment — квартира и первый период аренды
+      operationId: createApartment
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApartmentInput'
+  /api/apartments/{id}/leases:
+    post:
+      summary: Создать независимую аренду квартиры или комнаты
+      operationId: createLease
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeaseInput'
+      description: Несколько жильцов присоединяются отдельными приглашениями. Запрещена одновременная аренда whole
+        и отдельных комнат либо два активных периода одного объекта.
+  /api/leases/{id}/invite:
+    post:
+      summary: createInvite — одноразовый код на 72 часа
+      operationId: createInvite
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: &id001
+                    type: string
+                  expires:
+                    type: integer
+                  url: *id001
+                required:
+                - code
+                - expires
+                - url
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      description: Создаёт независимое одноразовое приглашение на 72 часа. URL ведёт в MAX Bot (?start=join_...),
+        не напрямую в Mini App. Предыдущие неиспользованные приглашения сохраняются.
+  /api/join:
+    post:
+      summary: joinLease — принять приглашение
+      operationId: joinLease
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - code
+              properties:
+                code:
+                  type: string
+                  maxLength: 100
+      description: Только demo/test. В production возвращает 409; действительное присоединение — по явному подтверждению
+        приглашения в MAX Bot.
+  /api/meters/{id}:
+    post:
+      summary: Изменить название, исходное значение или архивировать счётчик
+      operationId: updateMeter
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeterUpdateInput'
+      description: Несколько жильцов присоединяются отдельными приглашениями. Запрещена одновременная аренда whole
+        и отдельных комнат либо два активных периода одного объекта.
+  /api/records:
+    post:
+      summary: createRecord — предметная запись аренды
+      operationId: createRecord
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Record'
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecordInput'
+  /api/records/{id}/action:
+    post:
+      summary: actOnRecord — переход с проверкой версии
+      operationId: actOnRecord
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Record'
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionInput'
+  /api/records/{id}/comments:
+    post:
+      summary: addComment — комментарий участника
+      operationId: addComment
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - text
+              properties:
+                text:
+                  type: string
+                  maxLength: 3000
+  /api/notifications/read:
+    post:
+      summary: readNotifications — отметить все уведомления
+      operationId: readNotifications
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /api/export:
+    get:
+      summary: exportData — доступный JSON снимок
+      operationId: exportData
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/State'
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/export/ticket:
+    post:
+      summary: prepareExport — временная ссылка на JSON
+      operationId: prepareExport
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadTicket'
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /api/export/download:
+    get:
+      summary: downloadExport — JSON по краткосрочному ключу
+      operationId: downloadExport
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/State'
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security: []
+      parameters:
+      - in: query
+        name: ticket
+        required: true
+        schema:
+          type: string
+  /api/files:
+    post:
+      summary: uploadFile — raw bytes до 10 МБ
+      operationId: uploadFile
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: query
+        name: lease_id
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: name
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+          application/pdf:
+            schema:
+              type: string
+              format: binary
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/png:
+            schema:
+              type: string
+              format: binary
+          image/webp:
+            schema:
+              type: string
+              format: binary
+          text/plain:
+            schema:
+              type: string
+              format: binary
+  /api/files/{id}/ticket:
+    post:
+      summary: prepareDownload — проверка доступа и ссылка
+      operationId: prepareDownload
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DownloadTicket'
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /api/download/{id}:
+    get:
+      summary: downloadFile — файл по краткосрочному ключу
+      operationId: downloadFile
+      responses:
+        '200':
+          description: Приватный файл как attachment
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security: []
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: ticket
+        required: true
+        schema:
+          type: string
+  /api/max/webhook:
+    post:
+      summary: receiveMaxUpdate — сохранение и дедупликация Update
+      operationId: receiveMaxUpdate
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      security:
+      - WebhookSecret: []
+      parameters:
+      - in: header
+        name: X-Max-Bot-Api-Secret
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /api/apartments/{id}:
+    post:
+      summary: updateApartment — метаданные и обложка своей квартиры
+      operationId: updateApartment
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApartmentUpdateInput'
+  /api/apartment-covers:
+    post:
+      summary: uploadApartmentCover — собственная обложка, JPG/PNG/WebP до 10 МБ
+      operationId: uploadApartmentCover
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: query
+        name: name
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+          image/png:
+            schema:
+              type: string
+              format: binary
+          image/webp:
+            schema:
+              type: string
+              format: binary
+  /api/apartment-covers/{id}/ticket:
+    post:
+      summary: prepareApartmentCover — временный URL доступной обложки
+      operationId: prepareApartmentCover
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - url
+                properties:
+                  url:
+                    type: string
+                    description: Относительный подписанный URL на 5 минут
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+  /api/apartment-covers/{id}/image:
+    get:
+      summary: readApartmentCover — подписанное приватное изображение
+      operationId: readApartmentCover
+      security: []
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: query
+        name: ticket
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Inline-изображение с Cache-Control private, no-store. Ticket и текущие права проверяются
+            заново.
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /api/apartments/{id}/units:
+    post:
+      summary: Добавить комнату в квартиру
+      operationId: createUnit
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnitInput'
+      description: Несколько жильцов присоединяются отдельными приглашениями. Запрещена одновременная аренда whole
+        и отдельных комнат либо два активных периода одного объекта.
+  /api/units/{id}:
+    post:
+      summary: Переименовать комнату
+      operationId: updateUnit
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnitUpdateInput'
+      description: Несколько жильцов присоединяются отдельными приглашениями. Запрещена одновременная аренда whole
+        и отдельных комнат либо два активных периода одного объекта.
+  /api/leases/{id}/archive-draft:
+    post:
+      summary: Отменить неиспользованный период аренды
+      operationId: archiveDraftLease
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {}
+      description: Только владелец, без участников и записей. Используемая аренда завершается согласованием.
+  /api/leases/{id}/meters:
+    post:
+      summary: Добавить счётчик или тарифные каналы
+      operationId: createMeter
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  meters:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                required:
+                - meters
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeterInput'
+      description: Несколько жильцов присоединяются отдельными приглашениями. Запрещена одновременная аренда whole
+        и отдельных комнат либо два активных периода одного объекта.
+  /api/leases/{id}/meter-settings:
+    post:
+      summary: Включить или отключить передачу показаний
+      operationId: configureMeters
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: &id003
+                  type: boolean
+              required:
+              - enabled
+      description: Отключение не удаляет историю и не отправляет данные поставщику.
+  /api/recurring-rules:
+    post:
+      summary: Создать правило ежемесячного начисления
+      operationId: createRecurringRule
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecurringInput'
+      description: Несколько жильцов присоединяются отдельными приглашениями. Запрещена одновременная аренда whole
+        и отдельных комнат либо два активных периода одного объекта.
+  /api/recurring-rules/{id}:
+    post:
+      summary: Изменить, приостановить, возобновить или удалить правило
+      operationId: updateRecurringRule
+      responses:
+        '200':
+          description: Успешно
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        '400':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Ошибка запроса/доступа/состояния
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema:
+          type: string
+          enum:
+          - miniapp
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema:
+          type: string
+          minLength: 8
+          maxLength: 100
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecurringUpdateInput'
+      description: Уже созданные начисления не переписываются. Цена/день основной аренды с жильцами меняются через
+        согласование kind=terms, не напрямую.
+  /privacy:
+    get:
+      operationId: publicPrivacy
+      summary: Публичная страница политики конфиденциальности
+      security: []
+      responses:
+        '200':
+          description: HTML без авторизации
+          content:
+            text/html:
+              schema: *id001
+  /terms:
+    get:
+      operationId: publicTerms
+      summary: Публичная страница условий использования
+      security: []
+      responses:
+        '200':
+          description: HTML без авторизации
+          content:
+            text/html:
+              schema: *id001
+  /api/profile/guide:
+    post:
+      summary: Сохранить прогресс знакомства с приложением
+      description: >-
+        Обновляет только прогресс текущего пользователя в указанном режиме.
+        Число открытий монотонно растёт до 4, разделы объединяются, скрытие сохраняется.
+        Другие настройки и активная роль не меняются. Повторный запрос безопасен.
+      operationId: updateGuideProgress
+      parameters:
+      - in: header
+        name: X-Keys-Client
+        required: true
+        schema: {type: string, const: miniapp}
+      - in: header
+        name: Idempotency-Key
+        required: true
+        schema: {type: string, minLength: 8, maxLength: 100}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role, progress]
+              properties:
+                role: {type: string, enum: [owner, tenant]}
+                progress:
+                  type: object
+                  required: [opens, topics, dismissed]
+                  properties:
+                    opens: {type: integer, minimum: 0, maximum: 4}
+                    topics:
+                      type: array
+                      maxItems: 7
+                      items:
+                        type: string
+                        enum: [apartments, documents, finances, requests, meters, purchases, visits]
+                    dismissed: {type: boolean}
+      responses:
+        '200':
+          description: Объединённый прогресс
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [role, progress]
+                properties:
+                  role: {type: string, enum: [owner, tenant]}
+                  progress: {type: object}
+        '400':
+          description: Некорректное тело запроса
+        '401':
+          description: Требуется авторизация
+        '403':
+          description: Недопустимый Origin или клиент
+        '409':
+          description: Повторный ключ с иным содержимым
+        '429':
+          description: Превышен лимит запросов
+  /api/apartments/{id}/deletion-preview:
+    get:
+      summary: Предварительная проверка удаления квартиры (только собственник)
+      operationId: previewApartmentDeletion
+      parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Предварительный просмотр без изменения данных
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, version, title, address, can_delete, confirmation_token, blockers, counts, has_history]
+                properties:
+                  id: {type: string}
+                  version: {type: integer, minimum: 1}
+                  title: {type: string}
+                  address: {type: string}
+                  can_delete: {type: boolean}
+                  has_history: {type: boolean}
+                  confirmation_token: {type: string, pattern: '^[0-9a-f]{64}$'}
+                  blockers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code: {type: string, enum: [active_tenants, unsettled_finances]}
+                        count: {type: integer}
+                        message: {type: string}
+                  counts:
+                    type: object
+                    properties:
+                      rooms: {type: integer, minimum: 0}
+                      leases: {type: integer, minimum: 0}
+                      records: {type: integer, minimum: 0}
+                      files: {type: integer, minimum: 0}
+                      covers: {type: integer, minimum: 0}
+                      recurring_rules: {type: integer, minimum: 0}
+                      tenants: {type: integer, minimum: 0}
+        default:
+          description: Ошибка доступа, запроса или сервера
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+  /api/apartments/{id}/delete:
+    post:
+      summary: Удалить квартиру и её связанные данные после подтверждения
+      operationId: deleteApartment
+      description: Только собственник в режиме owner. Активные аренды с жильцами и незавершённые расчёты блокируют удаление. Изменение данных после предварительного просмотра возвращает 409. Повтор того же запроса с тем же ключом идемпотентен.
+      parameters:
+      - {in: path, name: id, required: true, schema: {type: string}}
+      - {in: header, name: X-Keys-Client, required: true, schema: {type: string, enum: [miniapp]}}
+      - {in: header, name: Idempotency-Key, required: true, schema: {type: string, minLength: 8, maxLength: 100}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version, confirmation_token, confirmed]
+              properties:
+                version: {type: integer, minimum: 1}
+                confirmation_token: {type: string, pattern: '^[0-9a-f]{64}$'}
+                confirmed: {type: boolean, const: true}
+      responses:
+        '200':
+          description: Квартира и метаданные удалены транзакционно. Физическая очистка файлов выполняется после COMMIT.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, id, deleted]
+                properties:
+                  ok: {type: boolean, const: true}
+                  id: {type: string}
+                  deleted: {type: boolean, const: true}
+        '409':
+          description: Состояние изменилось либо есть действующие жильцы или неурегулированные расчёты. Требуется повторный просмотр.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+        default:
+          description: Ошибка подтверждения, запроса, доступа или сервера
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Error'}
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+    CookieSession:
+      type: apiKey
+      in: cookie
+      name: keys_session
+    WebhookSecret:
+      type: apiKey
+      in: header
+      name: X-Max-Bot-Api-Secret
+  schemas:
+    Error:
+      type: object
+      required:
+      - error
+      - requestId
+      properties:
+        error:
+          type: string
+        requestId:
+          type: string
+    State:
+      type: object
+      properties:
+        user:
+          type: object
+          additionalProperties: true
+        apartments:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        leases:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+            properties:
+              id: *id001
+              unit_id: *id001
+              unit_title: *id001
+              tenant_id:
+                type:
+                - string
+                - 'null'
+                description: Совместимость; не источник прав доступа.
+              tenant_ids:
+                type: array
+                items: *id001
+              meters_enabled:
+                type: integer
+                enum:
+                - 0
+                - 1
+              current_rent:
+                type: integer
+              current_terms: *id001
+              current_due_day:
+                type: integer
+        records:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        meters:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        comments:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        notifications:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        people:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        files:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        server_time:
+          type: string
+          format: date-time
+        business_date:
+          type: string
+          format: date
+        timezone:
+          type: string
+        units:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        meter_history:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        recurring_rules:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    LeaseInput:
+      type: object
+      required:
+      - start
+      - end
+      - rent
+      - deposit
+      - due_day
+      - meter_day
+      properties:
+        start:
+          type: string
+          format: date
+        end:
+          type: string
+          format: date
+        rent:
+          type: integer
+          minimum: 1
+          description: Копейки
+        deposit:
+          type: integer
+          minimum: 0
+        terms:
+          type: string
+          maxLength: 3000
+        due_day:
+          type: integer
+          minimum: 1
+          maximum: 31
+        meter_day:
+          type: integer
+          minimum: 1
+          maximum: 31
+        unit_id:
+          type: string
+          description: ID целой квартиры либо комнаты этой квартиры. При пропуске выбирается whole.
+        recurring_rent:
+          type: boolean
+          default: true
+        meters_enabled:
+          type: boolean
+          default: true
+    ApartmentInput:
+      allOf:
+      - $ref: '#/components/schemas/LeaseInput'
+      - type: object
+        required:
+        - title
+        - address
+        - rooms
+        - area
+        properties:
+          title:
+            type: string
+            maxLength: 80
+          address:
+            type: string
+            maxLength: 250
+          rooms:
+            type: integer
+            minimum: 1
+            maximum: 20
+          area:
+            type: number
+            minimum: 5
+            maximum: 2000
+          photo:
+            enum:
+            - living
+            - owner
+          cover_id:
+            type:
+            - string
+            - 'null'
+            description: id предварительно загруженной своей обложки; null — стандартная иллюстрация
+          rental_mode:
+            enum:
+            - whole
+            - rooms
+            default: whole
+          unit_title:
+            type: string
+            maxLength: 80
+            description: Название первой комнаты при rental_mode=rooms.
+    RecordInput:
+      type: object
+      required:
+      - kind
+      - lease_id
+      - title
+      - payload
+      properties:
+        kind:
+          enum:
+          - ticket
+          - purchase
+          - visit
+          - charge
+          - reading
+          - document
+          - expense
+          - termination
+          - terms
+        lease_id:
+          type: string
+        title:
+          type: string
+          maxLength: 180
+        payload:
+          type: object
+          additionalProperties: true
+        files:
+          type: array
+          maxItems: 5
+          uniqueItems: true
+          items:
+            type: string
+    ActionInput:
+      type: object
+      required:
+      - action
+      - version
+      properties:
+        action:
+          enum:
+          - start
+          - resolve
+          - confirm
+          - reopen
+          - cancel
+          - approve
+          - reject
+          - compensate
+          - accept
+          - counter
+          - complete
+          - claim
+          - record_payment
+        version:
+          type: integer
+          minimum: 1
+        note:
+          type: string
+        amount:
+          type: integer
+          minimum: 1
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        files:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+        claim_id:
+          type: string
+          description: ID конкретного перевода из payload.claims при confirm/reject платежа.
+        payer_id:
+          type: string
+          description: Участник аренды для record_payment; нельзя указать жильца другой аренды.
+    Record:
+      allOf:
+      - $ref: '#/components/schemas/RecordInput'
+      - type: object
+        properties:
+          id:
+            type: string
+          status:
+            type: string
+          version:
+            type: integer
+          visibility:
+            enum:
+            - shared
+            - owner
+          created_at:
+            type: string
+            format: date-time
+          updated_at:
+            type: string
+            format: date-time
+    DownloadTicket:
+      type: object
+      required:
+      - url
+      - name
+      - mime
+      properties:
+        url:
+          type: string
+          format: uri
+        name:
+          type: string
+        mime:
+          type: string
+    ApartmentUpdateInput:
+      type: object
+      required:
+      - version
+      properties:
+        title:
+          type: string
+          maxLength: 80
+        address:
+          type: string
+          maxLength: 250
+        rooms:
+          type: integer
+          minimum: 1
+          maximum: 20
+        area:
+          type: number
+          minimum: 5
+          maximum: 2000
+        photo:
+          enum:
+          - living
+          - owner
+        cover_id:
+          type:
+          - string
+          - 'null'
+          description: id предварительно загруженной своей обложки; null — стандартная иллюстрация
+        version:
+          type: integer
+          minimum: 1
+        lease:
+          allOf:
+          - $ref: '#/components/schemas/LeaseInput'
+          - type: object
+            required:
+            - id
+            properties:
+              id:
+                type: string
+          description: Только активный черновик без арендатора и записей
+    UnitInput:
+      type: object
+      properties:
+        kind:
+          enum:
+          - whole
+          - room
+          default: room
+        title:
+          type: string
+          maxLength: 80
+      required:
+      - title
+    UnitUpdateInput:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 80
+        version: &id002
+          type: integer
+          minimum: 1
+      required:
+      - title
+      - version
+    MeterInput:
+      type: object
+      properties:
+        label:
+          type: string
+          maxLength: 80
+        kind:
+          enum:
+          - cold_water
+          - hot_water
+          - gas
+          - electricity
+          - heating
+          - other
+        unit:
+          enum:
+          - м³
+          - кВт·ч
+          - Гкал
+          - МВт·ч
+          - л
+          - ед.
+        scope:
+          enum:
+          - lease
+          - apartment
+          default: lease
+        baseline:
+          type: integer
+          minimum: 0
+          maximum: 1000000000000
+        scheme:
+          enum:
+          - single
+          - dual
+          - triple
+          default: single
+      required:
+      - label
+    MeterUpdateInput:
+      type: object
+      properties:
+        version: *id002
+        label:
+          type: string
+          maxLength: 80
+        baseline:
+          type: integer
+          minimum: 0
+          maximum: 1000000000000
+          description: Меняется только до первого показания; иначе создайте новый счётчик.
+        active: *id003
+      description: Укажите актуальную version. Для совместимости со старыми клиентами она необязательна; сервер
+        всё равно проверяет права и историю.
+    RecurringInput:
+      type: object
+      properties:
+        lease_id: *id001
+        title:
+          type: string
+          maxLength: 180
+        amount:
+          type: integer
+          minimum: 1
+        due_day:
+          type: integer
+          minimum: 1
+          maximum: 31
+        advance_days:
+          type: integer
+          minimum: 1
+          maximum: 60
+          default: 14
+        start_month: &id004
+          type: string
+          pattern: ^\d{4}-\d{2}$
+        end_month: *id004
+      required:
+      - lease_id
+      - title
+      - amount
+      - due_day
+    RecurringUpdateInput:
+      type: object
+      properties:
+        version: *id002
+        action:
+          enum:
+          - pause
+          - resume
+          - delete
+          description: Для изменения условий поля action нет.
+        effective_month: *id004
+        title:
+          type: string
+          maxLength: 180
+        amount:
+          type: integer
+          minimum: 1
+        due_day:
+          type: integer
+          minimum: 1
+          maximum: 31
+        advance_days:
+          type: integer
+          minimum: 1
+          maximum: 60
+      required:
+      - version

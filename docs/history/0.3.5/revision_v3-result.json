@@ -1,0 +1,26 @@
+{
+  "passed": 9,
+  "failed": 0,
+  "groups": [
+    "navigation placement, single history and calm contract typography",
+    "room creation and independent rental forms; Russian date fields 320–1440px",
+    "two tenants per room; separate room; repeat bot-first invitation links",
+    "configurable gas and shared three-tariff electricity via UI",
+    "tenant readings; shared values only; private room meter stays hidden",
+    "two actual-payment claims and individual owner confirmations, no duplicate rent",
+    "create/edit/pause/resume/delete monthly rule without changing issued bills",
+    "saved light/dark theme; original wordmark; system change does not override explicit preference",
+    "separate ticket confirmation filter and responsive navigation"
+  ],
+  "mode": "embedded DOM + real HTTP bridge",
+  "page_errors": [],
+  "widths": [
+    320,
+    360,
+    390,
+    768,
+    1440
+  ],
+  "max_live_tested": false,
+  "webkit_tested": false
+}

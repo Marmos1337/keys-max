@@ -1,0 +1,11 @@
+{
+    email {$ACME_EMAIL}
+    # No access log: file download URLs contain short-lived signed tickets.
+}
+{$DOMAIN} {
+    encode zstd gzip
+    request_body {
+        max_size 11MB
+    }
+    reverse_proxy app:3000
+}

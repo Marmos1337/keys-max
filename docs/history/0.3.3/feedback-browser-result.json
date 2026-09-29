@@ -1,0 +1,28 @@
+{
+  "passed": 7,
+  "failed": 0,
+  "groups": [
+    "original wordmarks and MAX image assets",
+    "banner removed, card label removed, no fake menu, semantic stats",
+    "prefilled property editing, real image upload, atomic save",
+    "cancel does not apply changes; saved image/title persist after navigation",
+    "tenant permissions, icon-free profile, consistent domain colours",
+    "responsive dates 320–1024px, date validation and editing vacant-lease draft",
+    "replace/reset cover with stock illustration"
+  ],
+  "widths": [
+    320,
+    360,
+    375,
+    390,
+    414,
+    540,
+    760,
+    1024,
+    1440
+  ],
+  "mode": "embedded DOM + real Node/SQLite HTTP bridge",
+  "page_errors": [],
+  "webkit_tested": false,
+  "max_live_tested": false
+}

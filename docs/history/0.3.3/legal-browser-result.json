@@ -1,0 +1,20 @@
+{
+  "passed": 12,
+  "failed": 0,
+  "checks": [
+    "privacy/light/320",
+    "privacy/light/390",
+    "privacy/light/1440",
+    "privacy/dark/320",
+    "privacy/dark/390",
+    "privacy/dark/1440",
+    "terms/light/320",
+    "terms/light/390",
+    "terms/light/1440",
+    "terms/dark/320",
+    "terms/dark/390",
+    "terms/dark/1440"
+  ],
+  "page_errors": [],
+  "mode": "public Node HTML/CSS in embedded DOM"
+}

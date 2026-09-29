@@ -1,0 +1,32 @@
+import {randomUUID} from 'node:crypto';
+import {writeFileSync,mkdirSync} from 'node:fs';
+import path from 'node:path';
+import {createApartment,createMeter,createRecord,actionRecord,dateInZone,event,pushNotification,nowISO} from './domain.mjs';
+export function seedDemo(db,config){if(db.get('SELECT 1 FROM users WHERE demo=1'))return;
+  db.tx(()=>{for(const [id,name,role]of[['demo-owner','Алексей Петров','owner'],['demo-tenant','Илья Соколов','tenant'],['demo-other','Мария Волкова','tenant']])db.run('INSERT INTO users(id,name,role,demo,created_at) VALUES(?,?,?,1,?)',id,name,role,nowISO());
+  const owner=db.get("SELECT * FROM users WHERE id='demo-owner'"),tenant=db.get("SELECT * FROM users WHERE id='demo-tenant'"),other=db.get("SELECT * FROM users WHERE id='demo-other'");
+  const today=dateInZone(config.timezone),year=+today.slice(0,4),ym=today.slice(0,7),period=ym;const start=`${year}-01-01`,end=`${year+1}-12-31`;
+  const a=createApartment(db,owner,{title:'Квартира на Тверской',address:'Москва, ул. Тверская, 15, кв. 42',rooms:2,area:52,start,end,rent:6_500_000,deposit:6_500_000,terms:'До двух жильцов. Покупки для квартиры согласовываем заранее. Посещения — по договорённости.',due_day:5,meter_day:28});
+  const l=db.get('SELECT * FROM leases WHERE apartment_id=?',a.id);db.run('UPDATE leases SET tenant_id=? WHERE id=?',tenant.id,l.id);
+  const a2=createApartment(db,owner,{title:'Студия у парка',address:'Москва, ул. Лесная, 8, кв. 17',rooms:1,area:34,start,end,rent:4_800_000,deposit:4_800_000,terms:'Спокойный дом рядом с парком.',photo:'owner',due_day:10,meter_day:25});const l2=db.get('SELECT * FROM leases WHERE apartment_id=?',a2.id);db.run('UPDATE leases SET tenant_id=? WHERE id=?',other.id,l2.id);
+  for(const lease of [l,l2]) for(const [label,kind,unit,scheme] of [['Холодная вода','cold_water','м³','single'],['Горячая вода','hot_water','м³','single'],['Электроэнергия','electricity','кВт·ч','dual']]) createMeter(db,owner,lease.id,{label,kind,unit,scheme});
+  const baselines=[143000,89000,1245000,678000];db.all('SELECT * FROM meters WHERE lease_id=?',l.id).forEach((m,i)=>db.run('UPDATE meters SET baseline=? WHERE id=?',baselines[i],m.id));
+  const create=(who,lease,kind,title,payload)=>createRecord(db,who,{lease_id:lease.id,kind,title,payload},config);
+  const r=create(tenant,l,'ticket','Протекает кран на кухне',{description:'Постоянно капает вода. Нужен мастер, удобнее после 18:00.',room:'Кухня',priority:'normal'});let pp=JSON.parse(db.get('SELECT payload FROM records WHERE id=?',r.id).payload);db.run('UPDATE records SET payload=? WHERE id=?',JSON.stringify({...pp,art:'tap'}),r.id);
+  const socket=create(tenant,l,'ticket','Не работает розетка',{description:'Правая розетка рядом с диваном перестала работать.',room:'Гостиная',priority:'normal'});actionRecord(db,owner,socket.id,{version:1,action:'start'});db.run('UPDATE records SET payload=json_set(payload,\'$.art\',\'socket\') WHERE id=?',socket.id);
+  const radiator=create(tenant,l,'ticket','Слабо греет батарея',{description:'В комнате прохладно, посмотрите, пожалуйста.',room:'Спальня',priority:'normal'});actionRecord(db,owner,radiator.id,{version:1,action:'resolve',note:'Мастер отрегулировал отопление.'});actionRecord(db,tenant,radiator.id,{version:2,action:'confirm'});db.run('UPDATE records SET payload=json_set(payload,\'$.art\',\'radiator\') WHERE id=?',radiator.id);
+  const target=new Date(Date.now()+3*86400_000);target.setHours(18,0,0,0);create(owner,l,'visit','Посещение собственника',{start:target.toISOString(),end:new Date(+target+3600_000).toISOString(),reason:'Проверить смеситель и обсудить замену фильтра.'});
+  create(tenant,l,'purchase','Новый смеситель для кухни',{amount:459000,description:'Модель с гарантией 3 года. Прошу согласовать компенсацию.',purchase_date:today});
+  const charge=create(owner,l,'charge','Аренда за '+period,{amount:6_500_000,due:`${ym}-28`,period});
+  const studioCharge=create(owner,l2,'charge','Аренда студии за '+period,{amount:4_800_000,due:`${ym}-10`,period});
+  db.run("UPDATE records SET dedupe=?,payload=json_set(payload,'$.rule_id',?) WHERE id=?",`charge:${l.id}:${ym}`,'rent_'+l.id,charge.id);
+  db.run("UPDATE records SET dedupe=?,payload=json_set(payload,'$.rule_id',?) WHERE id=?",`charge:${l2.id}:${ym}`,'rent_'+l2.id,studioCharge.id);
+  create(other,l2,'ticket','Проверить вытяжку',{description:'Гудит при включении.',room:'Кухня',priority:'normal'});
+  const previousDate=new Date(Date.UTC(year,+today.slice(5,7)-2,1));const prev=previousDate.toISOString().slice(0,7);const previous=create(owner,l,'charge','Аренда за '+prev,{amount:6_500_000,due:`${prev}-05`,period:prev});actionRecord(db,owner,previous.id,{action:'record_payment',amount:6_500_000,version:1,note:'Учебная запись об оплате.'});
+  create(owner,l,'expense','Обслуживание кондиционера',{amount:350000,date:today,description:'Чистка и диагностика. Расход видит только собственник.'});
+  mkdirSync(path.join(config.dataDir,'uploads'),{recursive:true,mode:0o700});
+  for(const [title,category,content] of [['Пример договора аренды','contract','ДЕМОНСТРАЦИОННЫЙ ФАЙЛ\n\nЭто не договор и не юридический шаблон.\nЗагрузите свой подписанный договор в разделе Документы.\nВсе данные в деморежиме вымышлены.'],['Опись квартиры — пример','act','ДЕМОНСТРАЦИОННАЯ ОПИСЬ\n\nДиван — 1 шт.\nСтол — 1 шт.\nТоршер — 1 шт.\n\nУчебный файл, не подписанный акт.']]){const id=randomUUID(),name=title+'.txt';writeFileSync(path.join(config.dataDir,'uploads',id),content,{mode:0o600});db.run('INSERT INTO files VALUES(?,?,?,?,?,?,?,?,?,?)',id,a.id,l.id,null,owner.id,name,'text/plain',Buffer.byteLength(content),id,nowISO());createRecord(db,owner,{lease_id:l.id,kind:'document',title,payload:{category},files:[id]},config);}
+  pushNotification(db,tenant.id,'Добро пожаловать в Ключи','Это демонстрационная квартира. Попробуйте передать показания, добавить покупку или согласовать посещение.');
+  event(db,owner,l,'Загружены демонстрационные данные. Не используйте реальные документы.');
+  });
+}

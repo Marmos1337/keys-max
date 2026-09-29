@@ -1,0 +1,254 @@
+{
+  "version": "0.3.6",
+  "base": "keys-max-0.3.5.zip",
+  "changes": [
+    {
+      "path": "README.md",
+      "status": "modified",
+      "sha256": "292eb0830253d1ba3afae900ab6f4ea6606e9c8b2cfd65a842ac57beb8af9844"
+    },
+    {
+      "path": "docs/API.md",
+      "status": "modified",
+      "sha256": "4cc2f01aee6fb1126cecd0d0cce2047d041095139e67a52a59912c2a19b51f66"
+    },
+    {
+      "path": "docs/TEST_REPORT.md",
+      "status": "modified",
+      "sha256": "155c5c3552090786bfb1a4d9e81a9ef61909b86e8da4ebaa351c820add22ae40"
+    },
+    {
+      "path": "docs/browser-result.json",
+      "status": "added",
+      "sha256": "2f3f9644c393f9d2fe69bf1e83b85a6ce6580098b726ea8c34f1c3fce6047f4a"
+    },
+    {
+      "path": "docs/delete-browser-result.json",
+      "status": "added",
+      "sha256": "5ad7dbe4628c69ef23556ef8cde08e2f7115bca224358b5b3e2471f027f49541"
+    },
+    {
+      "path": "docs/fresh-start-result.json",
+      "status": "added",
+      "sha256": "f03ce659087889ca0bd06b0c730a0901bd6c2af2bc5a9c56e97d29a6281715f7"
+    },
+    {
+      "path": "docs/history/0.3.5/CHANGED_FILES.json",
+      "status": "added",
+      "sha256": "76b703e97898a21a3d32570629fde05ac63fc5786af99adb001eb83c5d3bfcb7"
+    },
+    {
+      "path": "docs/history/0.3.5/TEST_REPORT.md",
+      "status": "added",
+      "sha256": "14a5c22da6750676c331fafe14a38b42cc40ff71b28f0e88928a21dd0f23c64d"
+    },
+    {
+      "path": "docs/history/0.3.5/expanded-result.json",
+      "status": "added",
+      "sha256": "fdfc45fe33ebb5245965327a20a594ae4bc1eacae68e167000a90aed09f1ebbe"
+    },
+    {
+      "path": "docs/history/0.3.5/feedback-result.json",
+      "status": "added",
+      "sha256": "15294670a853f000de1263b28863120198cb5675486337192167224c85430ca5"
+    },
+    {
+      "path": "docs/history/0.3.5/fresh-result.json",
+      "status": "added",
+      "sha256": "479d76c3b1d4cb38f349fff6d03a58ffe78d51d75d7273e54f39f6b8a2fa4a08"
+    },
+    {
+      "path": "docs/history/0.3.5/legal-result.json",
+      "status": "added",
+      "sha256": "ef42b33440f4c25c058ef3ab3322e5c43cfc72704b5d5c9effb00fe7ab1fb7cc"
+    },
+    {
+      "path": "docs/history/0.3.5/node-test-output.txt",
+      "status": "added",
+      "sha256": "777f502fdfe49cfd8850b90e9230b7e749b95a0f1336cba1e08ddb572d4de54d"
+    },
+    {
+      "path": "docs/history/0.3.5/revision_v3-result.json",
+      "status": "added",
+      "sha256": "8246cc6e73f750d996dca847e1a2c64d8d709f4cc6cade1249dca213609cad98"
+    },
+    {
+      "path": "docs/history/0.3.5/smoke-result.json",
+      "status": "added",
+      "sha256": "2f3f9644c393f9d2fe69bf1e83b85a6ce6580098b726ea8c34f1c3fce6047f4a"
+    },
+    {
+      "path": "docs/history/0.3.5/standard-result.json",
+      "status": "added",
+      "sha256": "bdca4254aee63dc1dea049367ae7be33000d9b73c523affecb38ef4f6cda6988"
+    },
+    {
+      "path": "docs/history/0.3.5/ИЗМЕНЕНИЯ.md",
+      "status": "added",
+      "sha256": "e04623a8d52b2e93499c2933933f562ca0b4f82e9c8263bf1c1ec065540a98a5"
+    },
+    {
+      "path": "docs/history/0.3.5/ОБНОВЛЕНИЕ.md",
+      "status": "added",
+      "sha256": "1ad3800a4089e427b3146636926e16ed15cf3ae9f247566cc69109cefc8bd63f"
+    },
+    {
+      "path": "docs/history/0.3.5/ПРОВЕРКА_ДЛЯ_ЗАКАЗЧИКА.md",
+      "status": "added",
+      "sha256": "58f76021b12816074bb7bc015918e1c432a232b3885580ba4b60f48aa78a73c6"
+    },
+    {
+      "path": "docs/node-test-output.txt",
+      "status": "modified",
+      "sha256": "55ddb20fd9eea4c66de9f1576257dbdcad2591c583b2b713b28baf40a2d94cc8"
+    },
+    {
+      "path": "docs/preservation.json",
+      "status": "added",
+      "sha256": "614e08e9936502f64e79415d7f27ff320855a4d8ea09463d1ee41e13e9de077e"
+    },
+    {
+      "path": "openapi.yaml",
+      "status": "modified",
+      "sha256": "9011625eb10cfcabc09103df40e9b66074c4cbafe5314fa58f18fea9a83dd5f5"
+    },
+    {
+      "path": "package.json",
+      "status": "modified",
+      "sha256": "1f75854b197b1c2057846722dd882cc8d8a10c851ab75a38d70ddf04c64274a1"
+    },
+    {
+      "path": "preview/09-delete-location.png",
+      "status": "added",
+      "sha256": "a50f0f441332641930f90baa037a695687e71f46133a27393406ec95c59718e0"
+    },
+    {
+      "path": "preview/10-delete-confirm.png",
+      "status": "added",
+      "sha256": "a5896efb8260292d89e669b6cf7f892cfe710d24b2d3bdefd412a5b5f76dfe17"
+    },
+    {
+      "path": "preview/11-delete-confirm-dark.png",
+      "status": "added",
+      "sha256": "9cbc950d073fa473d364336e941aa1d44233b12232632301dd6dccb2b77d274b"
+    },
+    {
+      "path": "preview/README.txt",
+      "status": "modified",
+      "sha256": "c4e9e0ac3a3eb86daa7d0c9265f02527aa79c67903a147dd39e0ad77faf11d14"
+    },
+    {
+      "path": "public/apartment-delete-ui.js",
+      "status": "added",
+      "sha256": "9ad8a8c50648e77a739704e38b5df1564a7faa8c9cb8d4e349ad2654fd972fa7"
+    },
+    {
+      "path": "public/app.js",
+      "status": "modified",
+      "sha256": "f402ec0a9bd86701420048d63fa2583a4d51b8889b356f9f39a5bd4faf740d9d"
+    },
+    {
+      "path": "public/icons.js",
+      "status": "modified",
+      "sha256": "157c3028328d9f71be0f4cf32c3ca36752649ccb9bc67c46b3ec6ad8242cc76b"
+    },
+    {
+      "path": "public/styles.css",
+      "status": "modified",
+      "sha256": "321c2973122e82c36e2d8f3ad98b810bafa952a453a67143135c2413f4dca060"
+    },
+    {
+      "path": "public/views.js",
+      "status": "modified",
+      "sha256": "d613bf547d1ab10b1d8a0c2d039e5559401485d94a8f00f181a7ac34cf06d645"
+    },
+    {
+      "path": "server/apartment-delete.mjs",
+      "status": "added",
+      "sha256": "21f42efbb32d6a1dd734f8ecb55762f4d4e38a38721ca176df839f07807fbb38"
+    },
+    {
+      "path": "server/http.mjs",
+      "status": "modified",
+      "sha256": "91d061b98aebefa77d886d1a9c1a7e4cb18a4c3eaf33f8712c67498a71487e65"
+    },
+    {
+      "path": "server/maintenance.mjs",
+      "status": "modified",
+      "sha256": "888d5f90c37c4987e204a756e7d3d4da8fa2bda4c807f98d4254f5326f2e08ba"
+    },
+    {
+      "path": "server/upload-cleanup.mjs",
+      "status": "added",
+      "sha256": "47a5c450698f78ee9b483083110d411f6f764d8f5f8d0ea95fa03ae4a1c1b216"
+    },
+    {
+      "path": "tests/apartment-delete.test.mjs",
+      "status": "added",
+      "sha256": "f967947d4df8fd4ce2111c2e1ae91c6718d77538c4b4e1cac3059f8f01060207"
+    },
+    {
+      "path": "tests/browser_delete.py",
+      "status": "added",
+      "sha256": "b18e0f6786dda5baf08ee1dc75475a5ceba453e45d2a3d9fa23f325056900c6e"
+    },
+    {
+      "path": "tests/fresh_start.py",
+      "status": "modified",
+      "sha256": "32db1212b74b0f29d88a7f0dfeb45549725d24b0b7ac8dfe055ca278c673a11e"
+    },
+    {
+      "path": "ИЗМЕНЕНИЯ.md",
+      "status": "modified",
+      "sha256": "e102a5d9d866e14117aba413f43789e95e54f7cb7d1bb4cef48f3ed01be49212"
+    },
+    {
+      "path": "КРАТКО_ДЛЯ_ЗАКАЗЧИКОВ.txt",
+      "status": "modified",
+      "sha256": "8c7f48fbad1a5664f95afd1d866ab2e3dbc08ebf046dba308fe71827c5377e96"
+    },
+    {
+      "path": "ОБНОВЛЕНИЕ.md",
+      "status": "modified",
+      "sha256": "c246a63b93cbec036549411ccec989d7940dad2acf8cc68b59c7d95873f2e1fa"
+    },
+    {
+      "path": "ПРОВЕРКА_ДЛЯ_ЗАКАЗЧИКА.md",
+      "status": "modified",
+      "sha256": "d6b3da0e04757c95d4c53a8000bcf83539217332fb449bd8268efcece961e744"
+    },
+    {
+      "path": "ПРОЧИТАЙ_СНАЧАЛА.txt",
+      "status": "modified",
+      "sha256": "b082b7907990bf704c95382151e66ea010f324f0ef9f0e9e99ba5ebf48e4091d"
+    },
+    {
+      "path": "docs/expanded-result.json",
+      "status": "moved_to_history"
+    },
+    {
+      "path": "docs/feedback-result.json",
+      "status": "moved_to_history"
+    },
+    {
+      "path": "docs/fresh-result.json",
+      "status": "moved_to_history"
+    },
+    {
+      "path": "docs/legal-result.json",
+      "status": "moved_to_history"
+    },
+    {
+      "path": "docs/revision_v3-result.json",
+      "status": "moved_to_history"
+    },
+    {
+      "path": "docs/smoke-result.json",
+      "status": "moved_to_history"
+    },
+    {
+      "path": "docs/standard-result.json",
+      "status": "moved_to_history"
+    }
+  ]
+}
