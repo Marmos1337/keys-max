@@ -7,14 +7,17 @@
  * staggered lists, success marks. Everything honours prefers-reduced-motion.
  */
 @font-face { font-family: "Inter"; src: url("/fonts/Inter-100_900.woff2") format("woff2"); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: "Artegra"; src: url("/fonts/Artegra-Sans-Extended-SC-900.woff2") format("woff2"); font-weight: 900; font-style: normal; font-display: swap; }
+/* Artegra Sans Extended (brand kit v0.2, udav.team/brand): Bold 700 for the page title, Medium 500 for product names
+   in capsules. Subset: Latin, Latin-1, Cyrillic, UI punctuation; the files report weight 400, so it is set here. */
+@font-face { font-family: "Artegra Sans Extended"; src: url("/fonts/artegra-extended-700.woff2") format("woff2"), url("/fonts/artegra-extended-700.woff") format("woff"); font-weight: 700; font-style: normal; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+0160-0161, U+0178, U+017D-017E, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0301, U+0304, U+0308, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2212, U+2215, U+2219, U+221E, U+2248, U+2260, U+2264-2265, U+2713, U+FB01-FB02, U+FEFF, U+FFFD; }
+@font-face { font-family: "Artegra Sans Extended"; src: url("/fonts/artegra-extended-500.woff2") format("woff2"), url("/fonts/artegra-extended-500.woff") format("woff"); font-weight: 500; font-style: normal; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+0160-0161, U+0178, U+017D-017E, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0301, U+0304, U+0308, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2000-206F, U+20A0-20CF, U+2100-214F, U+2190-21FF, U+2212, U+2215, U+2219, U+221E, U+2248, U+2260, U+2264-2265, U+2713, U+FB01-FB02, U+FEFF, U+FFFD; }
 
 /* 01 · Tokens --------------------------------------------------------------- */
 :root {
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   font-feature-settings: "cv11", "ss01";
   line-height: 1.45;
-  --display: "Artegra", "Inter", -apple-system, sans-serif;
+  --display: "Artegra Sans Extended", "Inter", -apple-system, sans-serif;
   --bg: #f5f6fa;
   --card: #ffffff;
   --surface-2: #efefec;
@@ -78,7 +81,7 @@
 
 /* 02 · Type ----------------------------------------------------------------- */
 body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
-h1 { font-family: var(--display); font-weight: 900; font-size: 24px; line-height: 1.15; letter-spacing: 0; }
+h1 { font-family: var(--display); font-weight: 700; font-size: 24px; line-height: 1.15; letter-spacing: -.01em; }
 .page-heading h1 { font-size: 24px; }
 h2 { font-size: 17px; line-height: 1.3; font-weight: 700; letter-spacing: -.01em; }
 h3 { font-size: 15px; font-weight: 650; }

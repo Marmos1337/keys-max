@@ -19,7 +19,7 @@ import { telegramHealth } from './telegram-poller.mjs';
 import * as O from './owners.mjs';
 import { createAccountLink, claimAccountLink, PLATFORMS } from './links.mjs';
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
-const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.png': 'image/png', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2' };
+const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.png': 'image/png', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2', '.woff': 'font/woff' };
 const routes = [];
 function route(method, pattern, handler, { auth = true, mutate = false, binary = false, afterCommit = null } = {}) { const keys = []; const regex = new RegExp('^' + pattern.replace(/:([A-Za-z_]+)/g, (_, k) => { keys.push(k); return '([^/]+)'; }) + '$'); routes.push({ method, regex, keys, handler, auth, mutate, binary, afterCommit }); }
 function json(res, status, body) { const bytes = Buffer.from(JSON.stringify(body)); res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': bytes.length, 'Cache-Control': 'no-store' }); res.end(bytes); }
