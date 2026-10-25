@@ -97,6 +97,7 @@ route('POST', '/api/join', ({ db, user, body, config }) => { if(config.productio
 route('POST', '/api/apartments/:id/units', ({db,user,params,body}) => createUnit(db,user,params.id,body), {mutate:true});
 route('POST', '/api/units/:id', ({db,user,params,body}) => updateUnit(db,user,params.id,body), {mutate:true});
 route('POST', '/api/leases/:id/meters', ({db,user,params,body}) => D.createMeter(db,user,params.id,body), {mutate:true});
+route('POST', '/api/leases/:id/meter-baselines', ({db,user,params,body}) => D.setBaselines(db,user,params.id,body), {mutate:true});
 route('POST', '/api/leases/:id/meter-settings', ({db,user,params,body}) => D.configureMeters(db,user,params.id,body), {mutate:true});
 route('POST', '/api/recurring-rules', ({db,user,body,config}) => D.createRecurringRule(db,user,body,config), {mutate:true});
 route('POST', '/api/recurring-rules/:id', ({db,user,params,body,config}) => D.updateRecurringRule(db,user,params.id,body,config), {mutate:true});

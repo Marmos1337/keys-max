@@ -541,10 +541,10 @@ export function createMeter(db,u,leaseId,b) {
     const scheme=kind==='electricity'?V.choice(b.scheme||'single',['single','dual','triple']):'single';
     const tariffs=scheme==='single'?['']:scheme==='dual'?['Т1 · день','Т2 · ночь']:['Т1 · пик','Т2 · ночь','Т3 · полупик'];
     if(db.get('SELECT COUNT(*) AS n FROM meters WHERE apartment_id=? AND active=1',lease.apartment_id).n+tariffs.length>100) fail(400,'На квартиру поддерживается до 100 активных каналов учёта.');
-    const group=randomUUID(),baseline=V.integer(b.baseline??0,'Начальное показание',0,1000000000000),ids=[];
+    const group=randomUUID(),baseline=V.integer(b.baseline??0,'Начальное показание',0,1000000000000),ids=[],price=meterPrice(b.price);
     for(const tariff of tariffs) {
       const id=randomUUID();ids.push(id);
-      db.run(`INSERT INTO meters(id,lease_id,label,unit,baseline,apartment_id,scope,kind,group_id,tariff) VALUES(?,?,?,?,?,?,?,?,?,?)`,id,lease.id,label+(tariff?' — '+tariff:''),unit,baseline,lease.apartment_id,scope,kind,group,tariff);
+      db.run(`INSERT INTO meters(id,lease_id,label,unit,baseline,apartment_id,scope,kind,group_id,tariff,baseline_at,price) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,id,lease.id,label+(tariff?' — '+tariff:''),unit,baseline,lease.apartment_id,scope,kind,group,tariff,baseline>0?nowISO():null,price);
     }
     event(db,u,lease,'Добавлен счётчик: '+label);
     notifyMeterUsers(db,u,lease,scope,'Настроены счётчики: '+label);
@@ -565,10 +565,36 @@ export function updateMeter(db,u,id,b) {
     if(b.baseline!==undefined&&hasReadings) fail(409,'Начальное значение нельзя менять после передачи показаний. При замене архивируйте счётчик и добавьте новый.');
     const label=b.label===undefined?m.label:V.text(b.label,'Название',80),baseline=b.baseline===undefined?m.baseline:V.integer(b.baseline,'Начальное показание',0,1000000000000);
     if(b.active!==undefined&&typeof b.active!=='boolean') fail(400,'Активность счётчика должна быть true или false.');
-    db.run('UPDATE meters SET label=?,baseline=?,active=?,version=version+1 WHERE id=?',label,baseline,b.active===undefined?m.active:b.active?1:0,id);
+    const price=b.price===undefined?m.price:meterPrice(b.price),baselineAt=b.baseline!==undefined&&baseline!==m.baseline?nowISO():m.baseline_at;
+    db.run('UPDATE meters SET label=?,baseline=?,active=?,price=?,baseline_at=?,version=version+1 WHERE id=?',label,baseline,b.active===undefined?m.active:b.active?1:0,price,baselineAt,id);
     event(db,u,lease,b.active===false?'Счётчик перенесён в архив: '+m.label:'Обновлён счётчик: '+label);
     notifyMeterUsers(db,u,lease,m.scope,'Обновлены настройки счётчиков');
     return db.get('SELECT * FROM meters WHERE id=?',id);
+}
+// Price per unit in kopecks (optional): shows what a month of consumption costs.
+function meterPrice(v) {
+    if(v===undefined||v===null||v==='') return null;
+    return V.integer(v,'Цена за единицу',0,100000000);
+}
+// First readings at move-in: the owner writes the current numbers, no photo needed.
+// Allowed while a meter has no monthly readings yet; later the tenants send readings with photos.
+export function setBaselines(db,u,leaseId,b) {
+    const {lease}=leaseAccess(db,u,leaseId,{write:true,ownerOnly:true});
+    if(lease.status==='ended') fail(409,'Аренда завершена.');
+    if(!Array.isArray(b.values)||!b.values.length||b.values.length>100) fail(400,'Укажите показания счётчиков.');
+    const meters=visibleMeters(db,lease),seen=new Set(),changed=[];
+    for(const v of b.values) {
+        const m=meters.find(x=>x.id===v?.meter_id);
+        if(!m||seen.has(m.id)) fail(400,'Счётчики изменились. Обновите экран.');
+        seen.add(m.id);
+        if(db.get('SELECT 1 FROM meter_values WHERE meter_id=?',m.id)) fail(409,m.label+': жильцы уже передавали показания, стартовое значение не меняется.');
+        const value=V.integer(v.value,m.label,0,1000000000000);
+        db.run('UPDATE meters SET baseline=?,baseline_at=?,version=version+1 WHERE id=?',value,nowISO(),m.id);
+        changed.push(`${m.label}: ${value/1000} ${m.unit}`);
+    }
+    event(db,u,lease,'Записаны стартовые показания');
+    for(const id of memberIds(db,lease.id)) if(id!==u.id) pushNotification(db,id,'Записаны стартовые показания',changed.join('\n')+'\nДальше показания передаёте вы: раз в месяц, с фото счётчиков.',null,null,'events',{target:'m_'+lease.id});
+    return {meters:meters.filter(m=>seen.has(m.id)).map(m=>db.get('SELECT * FROM meters WHERE id=?',m.id))};
 }
 export function configureMeters(db,u,leaseId,b) {
     const {lease}=leaseAccess(db,u,leaseId,{write:true,ownerOnly:true});
@@ -585,11 +611,14 @@ function recordReading(db,u,ctx,p,files,config) {
     const meters=all.filter(m=>!db.get('SELECT 1 FROM meter_values WHERE meter_id=? AND period=?',m.id,period));
     if(!meters.length) fail(409,'Все показания за этот месяц уже переданы.');
     if(!Array.isArray(p.values)||p.values.length!==meters.length) fail(400,'Набор счётчиков изменился или показания уже переданы другим участником. Обновите экран.');
+    // Tenants back the numbers with a photo of the meters; the owner's starting readings need none.
+    const photos=files.filter(id=>String(db.get('SELECT mime FROM files WHERE id=?',id)?.mime||'').startsWith('image/'));
+    if(!photos.length) fail(400,'Прикрепите фото счётчиков: по нему собственник сверит цифры.');
     const values=meters.map(m=>{
         const entries=p.values.filter(v=>v.meter_id===m.id);if(entries.length!==1) fail(400,'Счётчики не совпадают с настройками. Обновите экран.');
         const value=V.integer(entries[0].value,m.label,0,1000000000000),previous=meterPrevious(db,m,period);
         if(value<previous) fail(400,m.label+': показание меньше предыдущего. При замене добавьте новый счётчик.');
-        return {meter_id:m.id,label:m.label,unit:m.unit,scope:m.scope,value,previous,consumption:value-previous};
+        return {meter_id:m.id,label:m.label,unit:m.unit,scope:m.scope,value,previous,consumption:value-previous,...(m.price!=null?{price:m.price,cost:Math.round((value-previous)*m.price/1000)}:{})};
     });
     const r=insertRecord(db,u,ctx,'reading','submitted','Показания за '+monthText(period),{period,values},'shared',null,files);
     for(const v of values) db.run('INSERT INTO meter_values VALUES(?,?,?,?,?,?)',v.meter_id,period,v.value,v.previous,r.id,r.created_at);

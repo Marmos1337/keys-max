@@ -76,7 +76,11 @@ export function openDatabase(directory) {
 // during a code-only rollback (old code ignores the extra tables).
 export function ensureIdentitySchema(db) {
     const columns = db.all('PRAGMA table_info(users)').map(c => c.name);
+    const meterColumns = db.all('PRAGMA table_info(meters)').map(c => c.name);
     db.tx(() => {
+        // Starting readings date and optional price per unit; every INSERT into meters names its columns.
+        if (!meterColumns.includes('baseline_at')) db.exec('ALTER TABLE meters ADD COLUMN baseline_at TEXT');
+        if (!meterColumns.includes('price')) db.exec('ALTER TABLE meters ADD COLUMN price INTEGER');
         if (!columns.includes('tg_id')) db.exec('ALTER TABLE users ADD COLUMN tg_id TEXT');
         if (!columns.includes('tg_bot_enabled')) db.exec('ALTER TABLE users ADD COLUMN tg_bot_enabled INTEGER NOT NULL DEFAULT 0');
         db.exec(`

@@ -1,11 +1,12 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {fixture,newUser,apartmentInput,status,httpFixture} from './helpers.mjs';
+import {meterPhoto} from './helpers.mjs';
 import * as D from '../server/domain.mjs';import {createUnit,updateUnit} from '../server/rental.mjs';
 import {createSession} from '../server/auth.mjs';
 const tx=(f,fn)=>f.db.tx(fn);
 const invite=(f,l,u)=>{const i=tx(f,()=>D.createInvite(f.db,f.owner,l.id));tx(f,()=>D.joinInvite(f.db,u,i.code));return i;};
 function roomSetup(f){const a=tx(f,()=>D.createApartment(f.db,f.owner,{...apartmentInput,rental_mode:'rooms',unit_title:'Комната А'})),l1=f.db.get('SELECT * FROM leases WHERE apartment_id=?',a.id),unit=tx(f,()=>createUnit(f.db,f.owner,a.id,{title:'Комната Б'})),l2=tx(f,()=>D.createLease(f.db,f.owner,a.id,{...apartmentInput,unit_id:unit.id}));const alice=newUser(f.db,'Алиса'),bob=newUser(f.db,'Борис'),charlie=newUser(f.db,'Вера');invite(f,l1,alice);invite(f,l1,bob);invite(f,l2,charlie);return {a,l1,l2,alice,bob,charlie,unit};}
-const create=(f,l,u,kind,payload={})=>tx(f,()=>D.createRecord(f.db,u,{lease_id:l.id,kind,title:'Тест '+kind,payload},f.config));
+const create=(f,l,u,kind,payload={})=>tx(f,()=>D.createRecord(f.db,u,{lease_id:l.id,kind,title:'Тест '+kind,payload,...(kind==='reading'?{files:[meterPhoto(f.db,l,u)]}:{})},f.config));
 const act=(f,r,u,action,extra={})=>tx(f,()=>D.actionRecord(f.db,u,r.id,{version:f.db.get('SELECT version FROM records WHERE id=?',r.id).version,action,...extra}));
 
 test('Whole apartment accepts three paying tenants and creates one shared rent bill, not three',t=>{const f=fixture(t),a=tx(f,()=>D.createApartment(f.db,f.owner,apartmentInput)),l=f.db.get('SELECT * FROM leases WHERE apartment_id=?',a.id);const users=[newUser(f.db,'Один'),newUser(f.db,'Два'),newUser(f.db,'Три')];for(const u of users)invite(f,l,u);assert.equal(D.memberIds(f.db,l.id).length,3);tx(f,()=>D.generateRecurring(f.db,f.config));tx(f,()=>D.generateRecurring(f.db,f.config));const charges=f.db.all("SELECT * FROM records WHERE lease_id=? AND kind='charge'",l.id).map(D.decode);assert.ok(charges.length);assert.ok(charges.every(r=>r.payload.amount===apartmentInput.rent));assert.equal(new Set(charges.map(r=>r.payload.period)).size,charges.length);for(const u of users)assert.equal(D.bootstrap(f.db,u,f.config).leases[0].tenant_ids.length,3);});

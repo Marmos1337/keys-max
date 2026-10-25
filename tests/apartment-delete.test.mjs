@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync, symlinkSync } from 'node:fs';
 import path from 'node:path';
 import { fixture, httpFixture, newUser, apartmentInput, status } from './helpers.mjs';
+import { meterPhoto } from './helpers.mjs';
 import * as D from '../server/domain.mjs';
 import { createUnit } from '../server/rental.mjs';
 import { openDatabase } from '../server/db.mjs';
@@ -122,7 +123,7 @@ test('Delete: complete related history removed; other apartment and user state s
     const doc = f.db.tx(() => D.createRecord(f.db, f.owner, { lease_id: l.id, kind: 'document', title: 'Документ', payload: { category: 'act' }, files: [fid] }, f.config));
     f.db.tx(() => D.addComment(f.db, f.tenant, doc.id, { text: 'Запись на удаление' }));
     const meter = f.db.tx(() => D.createMeter(f.db, f.owner, l.id, { label: 'Вода', unit: 'м³', kind: 'cold_water', scope: 'lease', baseline: 0 }));
-    f.db.tx(() => D.createRecord(f.db, f.tenant, { lease_id: l.id, kind: 'reading', title: 'Показания', payload: { values: [{ meter_id: meter.meters[0].id, value: 10 }] } }, f.config));
+    f.db.tx(() => D.createRecord(f.db, f.tenant, { lease_id: l.id, kind: 'reading', title: 'Показания', payload: { values: [{ meter_id: meter.meters[0].id, value: 10 }] }, files: [meterPhoto(f.db, l, f.tenant)] }, f.config));
     f.db.run("UPDATE leases SET status='ended' WHERE id=?", l.id);
     const oid = randomUUID();
     f.db.run('INSERT INTO outbox(id,user_id,body,created_at) VALUES(?,?,?,?)', oid, f.tenant.id, JSON.stringify({ recordId: doc.id, title: 'Старое уведомление' }), D.nowISO());

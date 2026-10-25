@@ -910,3 +910,32 @@ body.modal-open { overflow: hidden; }
 .joined-tile svg { grid-row: span 2; color: var(--blue-strong); }
 .joined-tile small { color: var(--muted); font-size: 12px; }
 .btn.ghost.danger { color: var(--red-strong); }
+
+/* 13 · Meters: starting readings, history (0.5) ---------------------------- */
+.baseline-card { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 12px 14px; align-items: center; padding: 18px; margin-bottom: 14px; background: var(--tone-soft); border: 1px solid transparent; }
+.baseline-card > .btn { grid-column: 1 / -1; }
+.baseline-card.done > .btn { grid-column: auto; }
+.baseline-card.done { grid-template-columns: auto minmax(0,1fr) auto; }
+.baseline-card b { display: block; color: var(--tone-ink); }
+.baseline-card small { color: var(--muted); font-size: 13px; line-height: 1.45; display: block; }
+.baseline-art { display: inline-flex; width: 52px; height: 52px; align-items: center; justify-content: center; border-radius: 16px; background: var(--tone-icon); color: var(--tone-strong); }
+.meter-copy { display: grid; min-width: 0; }
+.meter-copy small { color: var(--muted); font-size: 12px; }
+.meter-last b { color: var(--text); font-weight: 650; }
+.delta { color: var(--green-strong); font-weight: 600; font-size: 12px; white-space: nowrap; }
+.meter-input { display: grid; justify-items: end; gap: 2px; }
+.meter-input small { color: var(--muted); font-size: 11px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.photo-required { border-style: dashed; }
+.meter-history { display: grid; gap: 10px; }
+.history-month { padding: 14px 16px; }
+.history-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.history-head b { text-transform: capitalize; flex: 1; }
+.history-total { font-weight: 700; }
+.history-line { display: grid; grid-template-columns: minmax(0,1fr) auto auto; gap: 4px 12px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.history-line > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-value { font-variant-numeric: tabular-nums; font-weight: 600; }
+.history-cost { grid-column: 2 / -1; justify-self: end; color: var(--muted); font-size: 12px; }
+.meter-field span small { font-weight: 400; }
+@media (max-width: 380px) { .baseline-card.done { grid-template-columns: auto minmax(0,1fr); } .baseline-card.done > .btn { grid-column: 1 / -1; } }
+.meter-row .meter-last b, .meter-row .meter-last .delta { display: inline; }

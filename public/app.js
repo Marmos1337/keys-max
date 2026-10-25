@@ -8,6 +8,7 @@ import { platform, bridgeReady, launchData, hostScheme, onHostSchemeChange, pain
 import { request, post, setToken, uploadFiles } from './api.js';
 import { coverFields, handleCoverChange, collectCover, releaseCoverPreviews } from './images.js';
 import { welcome, roleView, shell, pageView, model, actionsFor } from './views.js';
+import { baselineForm } from './meters-ui.js';
 import { peopleSection, inviteCreateForm, inviteResult, inviteManage, invitePreview, inviteProblem, inviteOutside, joinedWelcome } from './invites-ui.js';
 import { uuid, esc, icon, button, notice, field, textarea, select, uploadField, localISO, today, parseAmount, money, number, date, categoryNames, kindNames } from './utils.js';
 const root = document.querySelector('#root'), modalRoot = document.querySelector('#modal-root'), toastRoot = document.querySelector('#toast-root');
@@ -176,8 +177,9 @@ function meterModal(id='') {
         '<div data-electric-scheme hidden>'+select('Тарифы электричества','scheme',[['single','Один тариф'],['dual','День и ночь'],['triple','Т1, Т2, Т3']],'single')+'</div>'+
         select('Единица измерения','unit',[['м³','м³'],['кВт·ч','кВт·ч'],['Гкал','Гкал'],['МВт·ч','МВт·ч'],['л','л'],['ед.','ед.']],'м³')+
         select('Кто передаёт','scope',[['lease','Только жильцы этой аренды'],['apartment','Общий счётчик всей квартиры']],'lease');
-    if(!used)fields+=field('Начальное показание','baseline','text',String((m?.baseline||0)/1000),'required inputmode="decimal"');
-    else fields+=notice('После первой передачи начальное показание не меняется. При замене прибора архивируйте старый и добавьте новый.');
+    if(!used)fields+=field('Стартовое показание (цифры со счётчика сейчас)','baseline','text',String((m?.baseline||0)/1000),'required inputmode="decimal"');
+    else fields+=notice('После первой передачи стартовое показание не меняется. При замене прибора архивируйте старый и добавьте новый.');
+    fields+=field('Цена за единицу, ₽ (необязательно)','price','text',m?.price!=null?String(m.price/100):'','inputmode="decimal" placeholder="Например, 51,20" autocomplete="off"')+'<p class="small-note">С ценой в истории видно, сколько стоит расход за месяц. Начисления по ней сами не создаются.</p>';
     if(m)fields+='<label class="checkbox-field"><input type="checkbox" name="active" '+(m.active?'checked':'')+'> Использовать этот счётчик</label>';
     else fields+=notice('Для нескольких тарифов создаются отдельные строки показаний. Начальные значения каждого тарифа можно затем изменить отдельно.');
     modal(m?'Настройки счётчика':'Добавить счётчик',formContent(m?'edit-meter':'create-meter',fields,'Сохранить',`data-id="${m?.id||''}" data-version="${m?.version||0}" data-lease="${l.id}"`));
@@ -491,6 +493,7 @@ async function clickAction(el) {
     if(act==='lease-page'){state.unitScope=el.dataset.id;state.scope=model(state).a.id;nav(el.dataset.page,null,{keepScope:true});return;}
     if(act==='new-unit'||act==='edit-unit'){unitModal(el.dataset.id);return;}
     if(act==='new-meter'||act==='edit-meter'){meterModal(el.dataset.id);return;}
+    if(act==='meter-baselines'){const {l}=chosenLease();modal('Стартовые показания',baselineForm(state,l));return;}
     if(act==='toggle-meters'){const {l}=chosenLease();await post('/leases/'+l.id+'/meter-settings',{enabled:el.dataset.enabled==='true'});await reload();toast('Настройка передачи показаний сохранена');return;}
     if(act==='restore-meter'){const m=state.data.meters.find(x=>x.id===el.dataset.id);await post('/meters/'+m.id,{active:true,version:m.version});await reload();toast('Счётчик восстановлен');return;}
     if(act==='new-rule'||act==='edit-rule'||act==='rule-state'){ruleModal(el.dataset.id,el.dataset.value);return;}
@@ -718,6 +721,7 @@ async function submit(form) {
             message = 'Статус обновлён';
         }
         if (type === 'readings') {
+            if (!form.querySelector('input[type=file]')?.files.length) throw Error('Приложите фото счётчиков — по нему собственник сверит цифры.');
             const leaseId = form.dataset.lease, values = pendingMeters(state.data,state.data.leases.find(l=>l.id===leaseId)).map(m => ({ meter_id: m.id, value: parseAmount(data['meter_' + m.id], 1000) })), files = await collectFiles(form, leaseId);
             result = await post('/records', { lease_id: leaseId, kind: 'reading', title: 'Показания счётчиков', payload: { values }, files }, key);
             message = 'Показания переданы собственнику';
@@ -785,8 +789,14 @@ async function submit(form) {
             result=await post(type==='create-unit'?'/apartments/'+form.dataset.apartment+'/units':'/units/'+form.dataset.id,{title:data.title,kind:'room',version:Number(form.dataset.version)},key);
             message='Комната сохранена. Теперь можно создать для неё отдельную аренду.';
         }
+        if(type==='meter-baselines') {
+            const values=[...form.querySelectorAll('input[name^="baseline_"]')].map(input=>({meter_id:input.name.slice(9),value:parseAmount(input.value,1000)}));
+            await post('/leases/'+form.dataset.lease+'/meter-baselines',{values},key);
+            message='Стартовые показания записаны';
+        }
         if(type==='create-meter'||type==='edit-meter') {
             const body={label:data.label,version:Number(form.dataset.version)};
+            body.price=String(data.price??'').trim()?parseAmount(data.price):null;
             if(data.baseline!==undefined)body.baseline=parseAmount(data.baseline,1000);
             if(type==='create-meter')Object.assign(body,{kind:data.kind,unit:data.unit,scope:data.scope,scheme:data.scheme});
             else body.active=data.active==='on';
