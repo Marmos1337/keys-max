@@ -9,6 +9,7 @@ import { request, post, setToken, uploadFiles } from './api.js';
 import { coverFields, handleCoverChange, collectCover, releaseCoverPreviews } from './images.js';
 import { welcome, roleView, shell, pageView, model, actionsFor } from './views.js';
 import { baselineForm } from './meters-ui.js';
+import { paymentFields } from './payments-ui.js';
 import { peopleSection, inviteCreateForm, inviteResult, inviteManage, invitePreview, inviteProblem, inviteOutside, joinedWelcome } from './invites-ui.js';
 import { uuid, esc, icon, button, notice, field, textarea, select, uploadField, localISO, today, parseAmount, money, number, date, categoryNames, kindNames } from './utils.js';
 const root = document.querySelector('#root'), modalRoot = document.querySelector('#modal-root'), toastRoot = document.querySelector('#toast-root');
@@ -227,21 +228,20 @@ function actionModal(id, action, claimId='') {
     const r = state.data.records.find(r => r.id === id);
     if (!r)
         throw Error('Запись не найдена.');
-    const item = actionsFor(r, state).find(x => x.action === action);
+    // Receipt of a marked payment is confirmed from its own card, not from the action bar.
+    const ownsCharge = r.kind === 'charge' && state.data.apartments.find(a => a.id === r.apartment_id)?.owner_id === state.data.user.id;
+    const item = actionsFor(r, state).find(x => x.action === action) || (ownsCharge && ['confirm', 'reject'].includes(action) && claimsFor(r.payload).length ? { action, label: action === 'confirm' ? 'Получил' : 'Не получил' } : null);
     if (!item)
         throw Error('Действие уже недоступно. Обновите страницу.');
     let fields = notice(esc(r.title));
     if (action === 'counter')
         fields += timesFields();
-    if (['resolve', 'reopen', 'reject'].includes(action))
+    if (['resolve', 'reopen', 'reject'].includes(action) && r.kind !== 'charge')
         fields += textarea(action === 'resolve' ? 'Что сделано' : action === 'reopen' ? 'Что осталось исправить' : 'Причина / комментарий', 'note', '', true);
-    if (action === 'claim' || action === 'record_payment')
-        fields += field(action === 'claim' ? 'Сколько вы перевели, ₽' : 'Сколько получено, ₽', 'amount', 'text', String(freeAmount(r.payload) / 100), 'required inputmode="decimal"') + textarea('Комментарий к переводу', 'note') + uploadField('Подтверждающий файл (необязательно)') + notice('Загрузив чек, вы не подтверждаете платёж автоматически. Получение проверяет собственник.');
-    if(action==='record_payment')fields+=select('От кого получено','payer_id',[['','Не указан'],...tenantIds(state.data.leases.find(l=>l.id===r.lease_id)).map(id=>[id,state.data.people.find(p=>p.id===id)?.name||'Участник'])],'');
+    if (r.kind === 'charge' && ['claim', 'record_payment', 'confirm', 'reject'].includes(action))
+        fields += paymentFields(r, action, state, claimId);
     if (action === 'compensate')
         fields += textarea('Комментарий к компенсации', 'note') + notice('Подтверждайте только после фактического возврата денег. Эта кнопка не выполняет перевод.', 'amber');
-    if (action === 'confirm' && r.kind === 'charge')
-        fields += notice('Подтвердите фактическое получение ' + money((claimsFor(r.payload).find(c=>c.id===claimId)||claimsFor(r.payload)[0])?.amount||0) + '. Повторное нажатие не увеличит сумму.', 'amber');
     if (action === 'complete' && r.kind === 'termination')
         fields += notice('Аренда перейдёт в архив. Записи останутся доступны сторонам только для чтения. Неурегулированные начисления или покупки блокируют завершение.', 'amber');
     if (action === 'accept' && r.kind === 'terms')
@@ -711,7 +711,7 @@ async function submit(form) {
         }
         if (type === 'record-action') {
             const record = state.data.records.find(r => r.id === form.dataset.id);
-            const body = { action: form.dataset.action, version: Number(form.dataset.version), note: data.note || '', ...(form.dataset.claimId?{claim_id:form.dataset.claimId}:{}),...(data.payer_id?{payer_id:data.payer_id}:{}) };
+            const body = { action: form.dataset.action, version: Number(form.dataset.version), note: data.note || '', ...(form.dataset.claimId?{claim_id:form.dataset.claimId}:{}),...(data.payer_id?{payer_id:data.payer_id}:{}),...(data.method?{method:data.method}:{}),...(data.paid_on?{paid_on:data.paid_on}:{}) };
             if (data.amount !== undefined)
                 body.amount = parseAmount(data.amount);
             if (data.start)

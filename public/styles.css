@@ -939,3 +939,30 @@ body.modal-open { overflow: hidden; }
 .meter-field span small { font-weight: 400; }
 @media (max-width: 380px) { .baseline-card.done { grid-template-columns: auto minmax(0,1fr); } .baseline-card.done > .btn { grid-column: 1 / -1; } }
 .meter-row .meter-last b, .meter-row .meter-last .delta { display: inline; }
+
+/* 14 · Cash payments (0.5) -------------------------------------------------- */
+.detail-due { margin: -4px 0 12px; color: var(--muted); }
+.pay-progress { position: relative; display: flex; height: 10px; overflow: hidden; border-radius: var(--radius-pill); background: var(--field-bg); }
+.pay-progress > span { width: var(--w, 0%); height: 100%; transition: width 600ms var(--ease); }
+.pay-done { background: var(--green-strong); }
+.pay-wait { background: var(--amber-strong); opacity: .55; }
+.pay-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 16px; color: var(--muted); font-size: 12px; }
+.pay-legend .dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; vertical-align: 1px; }
+.dot.done { background: var(--green-strong); } .dot.wait { background: var(--amber-strong); } .dot.rest { background: var(--line); }
+.claim-card { padding: 16px; margin: 12px 0; }
+.claim-head { display: grid; grid-template-columns: 40px minmax(0,1fr) auto; gap: 12px; align-items: center; }
+.claim-head small { display: block; color: var(--muted); font-size: 12px; }
+.claim-icon { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 50%; background: var(--tone-icon); color: var(--tone-strong); }
+.claim-card p { margin: 10px 0 0; }
+.claim-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+.claim-card .action-row { margin: 14px 0 0; }
+.file-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.pay-entry { display: grid; grid-template-columns: 22px minmax(0,1fr); gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); }
+.pay-entry.ok > svg { color: var(--green-strong); } .pay-entry.dispute > svg { color: var(--amber-strong); }
+.pay-entry small { display: block; color: var(--muted); font-size: 12px; }
+.method-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: var(--radius-pill); background: var(--field-bg); }
+.method-switch label { position: relative; }
+.method-switch input { position: absolute; opacity: 0; inset: 0; }
+.method-switch span { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border-radius: var(--radius-pill); font-weight: 600; font-size: 14px; color: var(--muted); transition: background var(--duration) var(--ease), color var(--duration) var(--ease); }
+.method-switch input:checked + span { background: var(--card); color: var(--text); box-shadow: var(--shadow-pill); }
+.method-switch input:focus-visible + span { outline: 2px solid var(--blue-strong); outline-offset: 2px; }

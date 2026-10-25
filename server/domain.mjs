@@ -404,31 +404,43 @@ export function actionRecord(db, u, id, b) {
         inStatus(['pending','partial','claimed']);
         p.claims=(p.claims||(p.claim?[p.claim]:[])).map(c=>({...c,id:c.id||randomUUID()}));
         const reserved=p.claims.reduce((sum,c)=>sum+c.amount,0),available=p.amount-p.confirmed-reserved;
+        // Payments happen outside the app, mostly in cash. A tenant marks the hand-over (amount,
+        // date, optional photo); only the owner turns it into «Оплачено» by confirming receipt.
+        const method=()=>V.choice(b.method||'cash',['cash','transfer'],'Способ оплаты');
+        const zone=process.env.TZ||'Europe/Moscow',paidOn=()=>{const d=b.paid_on?V.date(b.paid_on,'Дата оплаты'):dateInZone(zone);if(d>dateInZone(zone,Date.now()+86400000))fail(400,'Дата оплаты не может быть в будущем.');return d;};
+        const fileIds=V.attachmentIds(b.files);
+        const how=m=>m==='cash'?'наличными':'переводом';
         if(act==='claim') {
             tenant();
-            if(p.claims.some(c=>c.user_id===u.id)) fail(409,'Ваш перевод уже ожидает подтверждения собственника.');
-            if(available<=0) fail(409,'Вся оставшаяся сумма уже ожидает подтверждения.');
-            p.claims.push({id:randomUUID(),amount:V.integer(b.amount,'Сумма перевода',1,available),note:V.text(b.note,'Комментарий',1000,true),at:nowISO(),user_id:u.id});
-            label=u.name+' сообщил об оплате';
+            if(p.claims.some(c=>c.user_id===u.id)) fail(409,'Ваша оплата уже ждёт подтверждения собственника.');
+            if(available<=0) fail(409,'Вся оставшаяся сумма уже ждёт подтверждения.');
+            const claim={id:randomUUID(),amount:V.integer(b.amount,'Сумма',1,available),method:method(),paid_on:paidOn(),note:V.text(b.note,'Комментарий',1000,true),at:nowISO(),user_id:u.id,files:fileIds};
+            p.claims.push(claim);
+            label=`${u.name}: ${claim.method==='cash'?'передал наличными':'перевёл'} ${formatMoney(claim.amount)} — подтвердите получение`;
         } else if(act==='confirm'||act==='reject') {
             owner();
             const claim=b.claim_id?p.claims.find(c=>c.id===b.claim_id):p.claims[0];
-            if(!claim) fail(409,'Этот перевод уже обработан. Обновите экран.');
+            if(!claim) fail(409,'Эта оплата уже обработана. Обновите экран.');
             if(act==='confirm') {
                 if(p.confirmed+claim.amount>p.amount) fail(409,'Сумма превышает остаток начисления.');
                 p.confirmed+=claim.amount;
                 p.payments=[...p.payments,{...claim,confirmed_by:u.id,confirmed_at:nowISO()}];
-                label='Подтверждён перевод: '+formatMoney(claim.amount);
-            } else {p.rejection=V.text(b.note,'Причина',1000);label='Перевод отклонён: '+p.rejection;}
+                label=`Собственник получил ${formatMoney(claim.amount)} ${how(claim.method||'transfer')}`;
+            } else {
+                p.rejection=V.text(b.note,'Что не так',1000);
+                p.disputes=[...(p.disputes||[]),{...claim,reason:p.rejection,by:u.id,disputed_at:nowISO()}];
+                label=`Собственник не подтвердил ${formatMoney(claim.amount)} ${how(claim.method||'transfer')}: ${p.rejection}`;
+            }
             p.claims=p.claims.filter(c=>c.id!==claim.id);
         } else if(act==='record_payment') {
-            owner();if(available<=0) fail(409,'Сначала обработайте ожидающие переводы.');
+            owner();if(available<=0) fail(409,'Сначала обработайте оплаты, которые ждут подтверждения.');
             const amount=V.integer(b.amount,'Полученная сумма',1,available);
             const payer=b.payer_id||null;
             if(payer&&!isMember(db,payer,ctx.lease.id)) fail(400,'Плательщик не участвует в этой аренде.');
+            const m=method();
             p.confirmed+=amount;
-            p.payments=[...p.payments,{id:randomUUID(),amount,user_id:payer,note:V.text(b.note,'Комментарий',1000,true),confirmed_by:u.id,confirmed_at:nowISO(),source:'owner_manual'}];
-            label='Собственник подтвердил получение: '+formatMoney(amount);
+            p.payments=[...p.payments,{id:randomUUID(),amount,method:m,paid_on:paidOn(),user_id:payer,note:V.text(b.note,'Комментарий',1000,true),files:fileIds,confirmed_by:u.id,confirmed_at:nowISO(),source:'owner_manual'}];
+            label=`Собственник записал получение ${formatMoney(amount)} ${how(m)}`;
         } else deny();
         p.claim=p.claims[0]||null; // Backward-compatible field for older clients; authoritative list is claims.
         status=p.claims.length?'claimed':p.confirmed===p.amount?'paid':p.confirmed?'partial':'pending';

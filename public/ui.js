@@ -88,6 +88,8 @@ export function rememberStrips(root) {
 }
 export function enhanceUI(root) {
     fitNumericLabels(root);
+    // Widths come from data attributes: the CSP forbids inline style attributes in markup.
+    root?.querySelectorAll('[data-w]').forEach(el => el.style.setProperty('--w', Math.max(0, Math.min(100, Number(el.dataset.w) || 0)) + '%'));
     root?.querySelectorAll('[data-ui="segmented"]').forEach(el => {
         const active = el.querySelector('[aria-pressed="true"]');
         el.scrollLeft = stripPositions.get(el.getAttribute('aria-label')) || 0;
