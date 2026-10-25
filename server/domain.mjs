@@ -3,6 +3,7 @@ import { fail, hash } from './auth.mjs';
 import * as V from './validate.mjs';
 import { bindCover, presentApartment } from './covers.mjs';
 import { isMember, memberIds, unitName, createUnit } from './rental.mjs';
+import { sealCode, openCode } from './invite-codes.mjs';
 export { isMember, memberIds } from './rental.mjs';
 export const nowISO = () => new Date().toISOString();
 export const decode = r => r ? { ...r, payload: JSON.parse(r.payload) } : null;
@@ -143,28 +144,85 @@ export function archiveDraftLease(db,u,leaseId) {
     db.run('DELETE FROM invites WHERE lease_id=?',lease.id);
     event(db,u,lease,'Отменён неиспользованный период аренды');return {ok:true};
 }
-export function createInvite(db,u,leaseId) {
+export const INVITE_DAYS=7;
+const inviteFail=(status,reason,message,ctx)=>{const e=new Error(message);e.status=status;e.reason=reason;if(ctx)e.lease_id=ctx.lease.id;throw e;};
+// One link admits one person: two tenants get two links. The code is shown to the
+// owner right away and can be shared again while pending (see invite-codes.mjs).
+export function createInvite(db,u,leaseId,{label='',secret=''}={}) {
     const {lease}=leaseAccess(db,u,leaseId,{write:true,ownerOnly:true});
     if(lease.status!=='active') fail(409,'Нельзя приглашать новых участников в завершаемую аренду.');
-    const code=randomBytes(18).toString('base64url'),expires=Date.now()+72*3600000;
-    db.run('INSERT INTO invites VALUES(?,?,?,NULL)',hash(code),leaseId,expires);
-    return {code,expires:new Date(expires).toISOString()};
+    const code=randomBytes(18).toString('base64url'),expires=Date.now()+INVITE_DAYS*86400000,h=hash(code),name=V.text(String(label||'').trim(),'Для кого',60,true);
+    db.run('INSERT INTO invites VALUES(?,?,?,NULL)',h,leaseId,expires);
+    db.run('INSERT INTO invite_meta(hash,lease_id,label,created_by,created_at,code_enc) VALUES(?,?,?,?,?,?)',h,leaseId,name,u.id,nowISO(),secret?sealCode(secret,code):null);
+    return {id:h,code,label:name,expires:new Date(expires).toISOString()};
 }
-export function previewInvite(db,u,code) {
+// Explains exactly why a link does not work, so the bot and the app can say what to do next.
+export function previewInvite(db,u,code,{track=false}={}) {
     V.text(code,'Код',100);
-    const invite=db.get('SELECT * FROM invites WHERE hash=?',hash(code));
-    if(!invite||invite.expires<Date.now()||invite.used_by) fail(400,'Приглашение истекло или уже использовано.');
-    const lease=db.get('SELECT * FROM leases WHERE id=?',invite.lease_id),apartment=db.get('SELECT * FROM apartments WHERE id=?',lease.apartment_id);
-    if(apartment.owner_id===u.id) fail(400,'Нельзя принять собственное приглашение.');
-    if(lease.status!=='active') fail(409,'Эта аренда уже недоступна для присоединения.');
-    if(isMember(db,u.id,lease.id)) fail(409,'Вы уже участвуете в этой аренде.');
-    return {lease,apartment,invite,unit:unitName(db,lease),owner:db.get('SELECT name FROM users WHERE id=?',apartment.owner_id).name};
+    const h=hash(String(code).trim()),invite=db.get('SELECT * FROM invites WHERE hash=?',h);
+    if(!invite) inviteFail(400,'not_found','Ссылка-приглашение не найдена. Проверьте, что она скопирована целиком, или попросите у собственника новую.');
+    const meta=db.get('SELECT * FROM invite_meta WHERE hash=?',h),lease=db.get('SELECT * FROM leases WHERE id=?',invite.lease_id),apartment=db.get('SELECT * FROM apartments WHERE id=?',lease.apartment_id);
+    const ctx={lease,apartment,invite,meta,unit:unitName(db,lease),owner:db.get('SELECT name FROM users WHERE id=?',apartment.owner_id).name};
+    if(apartment.owner_id===u.id) inviteFail(400,'own','Это ваша ссылка-приглашение. Отправьте её жильцу: он откроет её у себя и подтвердит присоединение.',ctx);
+    if(isMember(db,u.id,lease.id)) inviteFail(409,'member','Вы уже участник этой аренды.',ctx);
+    if(lease.status!=='active') inviteFail(409,'closed','Эта аренда уже недоступна для присоединения.',ctx);
+    if(meta?.revoked_at) inviteFail(400,'revoked','Собственник отозвал эту ссылку. Попросите у него новую.',ctx);
+    if(invite.used_by) inviteFail(400,'used','По этой ссылке уже присоединился другой человек: одна ссылка — для одного жильца. Попросите у собственника свою ссылку.',ctx);
+    if(invite.expires<Date.now()) inviteFail(400,'expired',`Срок ссылки истёк (она действует ${INVITE_DAYS} дней). Попросите у собственника новую — в Ключах это одна кнопка.`,ctx);
+    if(track&&meta&&!meta.opened_at) db.run('UPDATE invite_meta SET opened_at=?,opened_by=? WHERE hash=?',nowISO(),u.id,h);
+    return ctx;
+}
+function memberDates(db,leases) {
+    return leases.flatMap(l=>db.all('SELECT lease_id,user_id,joined_at FROM lease_members WHERE lease_id=?',l.id));
+}
+export function inviteStatus(row,now=Date.now()) {
+    if(row.used_by) return 'accepted';
+    if(row.revoked_at) return 'revoked';
+    if(row.expires<now) return 'expired';
+    return row.opened_at?'opened':'pending';
+}
+// Owner view: pending and recent invites of active leases, without codes.
+export function listInvites(db,u) {
+    const now=Date.now(),recent=new Date(now-30*86400000).toISOString();
+    return db.all(`SELECT i.hash,i.lease_id,i.expires,i.used_by,m.label,m.created_at,m.opened_at,m.accepted_at,m.revoked_at,m.code_enc IS NOT NULL AS sealed,uu.name AS used_name
+        FROM invites i JOIN invite_meta m ON m.hash=i.hash JOIN leases l ON l.id=i.lease_id JOIN apartments a ON a.id=l.apartment_id LEFT JOIN users uu ON uu.id=i.used_by
+        WHERE a.owner_id=? AND l.status!='ended' AND m.replaced_by IS NULL AND m.created_at>? ORDER BY m.created_at DESC LIMIT 100`,u.id,recent)
+      .map(r=>({id:r.hash,lease_id:r.lease_id,label:r.label,status:inviteStatus(r,now),created_at:r.created_at,expires:new Date(r.expires||0).toISOString(),opened_at:r.opened_at,accepted_at:r.accepted_at,accepted_name:r.used_name||'',shareable:!!r.sealed&&inviteStatus(r,now)!=='accepted'&&inviteStatus(r,now)!=='revoked'&&r.expires>=now}))
+      .filter(r=>r.status!=='revoked'||Date.parse(r.created_at)>now-86400000);
+}
+function ownedInvite(db,u,id) {
+    const row=db.get('SELECT i.*,m.label,m.code_enc,m.revoked_at FROM invites i JOIN invite_meta m ON m.hash=i.hash WHERE i.hash=?',V.text(id,'Приглашение',80));
+    if(!row) fail(404,'Приглашение не найдено.');
+    leaseAccess(db,u,row.lease_id,{write:true,ownerOnly:true});
+    return row;
+}
+export function revokeInvite(db,u,id) {
+    const row=ownedInvite(db,u,id);
+    if(row.used_by) fail(409,'По этой ссылке уже присоединились. Ссылку отзывать не нужно.');
+    db.run('UPDATE invites SET expires=0 WHERE hash=?',row.hash);
+    db.run('UPDATE invite_meta SET revoked_at=COALESCE(revoked_at,?),code_enc=NULL WHERE hash=?',nowISO(),row.hash);
+    return {ok:true};
+}
+// "Send again": the same link while it is pending, otherwise a fresh one that replaces it.
+export function shareInvite(db,u,id,secret) {
+    const row=ownedInvite(db,u,id),code=!row.used_by&&!row.revoked_at&&row.expires>=Date.now()?openCode(secret,row.code_enc):'';
+    if(!code) fail(409,'Эту ссылку уже нельзя отправить повторно. Создайте новую.');
+    return {id:row.hash,code,label:row.label,expires:new Date(row.expires).toISOString()};
+}
+export function renewInvite(db,u,id,secret) {
+    const row=ownedInvite(db,u,id);
+    if(row.used_by) fail(409,'По этой ссылке уже присоединились. Для следующего жильца создайте новое приглашение.');
+    const next=createInvite(db,u,row.lease_id,{label:row.label,secret});
+    db.run('UPDATE invites SET expires=0 WHERE hash=?',row.hash);
+    db.run('UPDATE invite_meta SET revoked_at=COALESCE(revoked_at,?),code_enc=NULL,replaced_by=? WHERE hash=?',nowISO(),next.id,row.hash);
+    return next;
 }
 export function joinInvite(db,u,code) {
-    const {lease:l,apartment:a}=previewInvite(db,u,code);
+    const {lease:l,apartment:a,meta}=previewInvite(db,u,code);
     db.run('INSERT INTO lease_members VALUES(?,?,?)',l.id,u.id,nowISO());
     if(!l.tenant_id) db.run('UPDATE leases SET tenant_id=? WHERE id=?',u.id,l.id);
-    db.run('UPDATE invites SET used_by=? WHERE hash=? AND used_by IS NULL',u.id,hash(code));
+    db.run('UPDATE invites SET used_by=? WHERE hash=? AND used_by IS NULL',u.id,hash(String(code).trim()));
+    db.run('UPDATE invite_meta SET accepted_at=?,code_enc=NULL WHERE hash=?',nowISO(),hash(String(code).trim()));
     db.run("UPDATE users SET role='tenant' WHERE id=?",u.id);
     // A new co-tenant cannot be silently bound by an unresolved group proposal.
     for(const r of db.all("SELECT * FROM records WHERE lease_id=? AND kind IN ('visit','terms','termination') AND status IN ('proposed','counter')",l.id).map(decode)) {
@@ -180,7 +238,7 @@ export function joinInvite(db,u,code) {
         pushNotification(db,u.id,'Подтвердите предстоящее посещение','До вашего присоединения жильцы согласовали визит. Проверьте время и подтвердите его или предложите другое.',r.id);
     }
     event(db,u,l,u.name+' присоединился к аренде');
-    notifyOther(db,u,{lease:l,apartment:a,owner:false},'Новый участник аренды',null,'shared',u.name+' присоединился. Начисления общие для этой группы, а не отдельная полная сумма каждому.');
+    notifyOther(db,u,{lease:l,apartment:a,owner:false},'Новый участник аренды',null,'shared',u.name+' присоединился'+(meta?.label?` по ссылке «${meta.label}»`:'')+'. Начисления общие для этой группы, а не отдельная полная сумма каждому.',{target:'l_'+l.id});
     return {apartment_id:a.id,lease_id:l.id};
 }
 export function proposalVoters(db,lease,proposer) {
@@ -575,7 +633,7 @@ export function bootstrap(db,u,config,{coverUrls=true}={}) {
     const comments=db.all(`SELECT c.*,u.name AS author FROM comments c JOIN users u ON u.id=c.user_id JOIN records r ON r.id=c.record_id JOIN apartments a ON a.id=r.apartment_id WHERE ${recordAccessSql} ORDER BY c.created_at`,u.id,u.id);
     const files=db.all(`SELECT f.id,f.record_id,f.name,f.mime,f.size FROM files f JOIN records r ON r.id=f.record_id JOIN apartments a ON a.id=r.apartment_id WHERE ${recordAccessSql}`,u.id,u.id);
     const recurring_rules=db.all(`SELECT rr.* FROM recurring_rules rr JOIN leases l ON l.id=rr.lease_id JOIN apartments a ON a.id=l.apartment_id WHERE ${access} AND rr.state!='deleted' ORDER BY rr.created_at`,u.id,u.id).map(rr=>({...rr,next_editable_month:nextEditableMonth(db,rr,dateInZone(config.timezone).slice(0,7)),revisions:db.all('SELECT * FROM recurring_revisions WHERE rule_id=? ORDER BY from_month',rr.id)}));
-    return {user:safeUser(u),apartments,units,leases,records,events,notifications,people,meters,meter_history,recurring_rules,comments,files,server_time:nowISO(),business_date:dateInZone(config.timezone),timezone:config.timezone};
+    return {user:safeUser(u),apartments,units,leases,records,events,notifications,people,meters,meter_history,recurring_rules,comments,files,invites:apartments.some(a=>a.owner_id===u.id)?listInvites(db,u):[],members:memberDates(db,leases),server_time:nowISO(),business_date:dateInZone(config.timezone),timezone:config.timezone};
 }
 
 export function validMonth(value,label='Месяц') {

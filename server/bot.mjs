@@ -37,7 +37,10 @@ export function makeMessage(db,config,userId,b) {
       previewInvite(db,u,b.inviteCode);
       buttons=[[{type:'callback',text:'Принять приглашение',payload:'join|'+b.inviteCode}]];
       return {format:'html',text:`<b>${limitedHtml(title,650)}</b>\n\n${limitedHtml(text,3200)}`,attachments:[{type:'inline_keyboard',payload:{buttons}}]};
-    } catch {title='Приглашение недоступно';text='Оно уже принято, отозвано или истекло. Новое приглашение можно получить у собственника.';}
+    } catch(e) {
+      if(e.reason==='member'&&e.lease_id){title='Вы уже в этой аренде';text='Приглашение принято раньше. Всё по квартире — в Ключах.';target='j_'+e.lease_id;}
+      else {title='Приглашение недоступно';text=e.status?e.message:'Оно уже принято, отозвано или истекло. Новое приглашение можно получить у собственника.';}
+    }
   }
   if(b.recordId) {
     try {
@@ -50,8 +53,8 @@ export function makeMessage(db,config,userId,b) {
       }
     } catch { title='Событие в Ключах';text='Доступ к этой записи изменился. Проверьте доступные вам аренды.';target='';cta='Открыть Ключи'; }
   }
-  if(target.startsWith('l_')||target.startsWith('m_')) {
-    try {leaseAccess(db,u,target.slice(2));cta=target.startsWith('m_')?'Открыть счётчики':'Открыть аренду';}
+  if(target.startsWith('l_')||target.startsWith('m_')||target.startsWith('j_')) {
+    try {leaseAccess(db,u,target.slice(2));cta=target.startsWith('m_')?'Открыть счётчики':target.startsWith('j_')?'Открыть Ключи':'Открыть аренду';}
     catch {target='';text='Доступ к аренде изменился.';}
   }
   buttons.push([link(cta,open(target))]);
@@ -64,11 +67,18 @@ export function enqueueUpdate(db,body) {
 function reply(db,userId,title,text,answerId,extra={},channel='max') {
   db.run('INSERT INTO outbox(id,user_id,body,created_at) VALUES(?,?,?,?)',randomUUID(),userId,JSON.stringify({title,text,answerId,...extra,...(channel==='max'?{}:{channel})}),nowISO());
 }
-function inviteReply(db,u,code,channel='max') {
+const rub=v=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:0}).format(v/100);
+function inviteReply(db,u,code,channel='max',config={}) {
   try {
-    const {apartment,unit,owner,lease}=previewInvite(db,u,code);
-    reply(db,u.id,'Приглашение в Ключи',`${owner} приглашает вас:\n${apartment.title} · ${unit}\n\nАренда за весь объект: ${new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(lease.rent/100)} в месяц.\nВы присоединитесь к группе этой аренды. Её участники видят общую историю, документы и платежи. Начисления не умножаются на число участников.\n\nПрисоединяйтесь только по знакомому приглашению.`,null,{inviteCode:code},channel);
-  } catch(e) {if(!e.status)throw e;reply(db,u.id,'Не удалось открыть приглашение',e.message,null,{},channel);}
+    const {apartment,unit,owner,lease}=previewInvite(db,u,code,{track:true});
+    const legal=config.termsUrl&&config.privacyUrl?`\n\nНажимая «Принять приглашение», вы соглашаетесь с условиями (${config.termsUrl}) и политикой конфиденциальности (${config.privacyUrl}).`:'';
+    reply(db,u.id,'Вас приглашают в Ключи',`${owner} приглашает вас в аренду:\n${apartment.title} · ${unit}\nПлата за весь объект: ${rub(lease.rent)} в месяц.\n\nПосле подтверждения здесь, в Ключах, будут платежи, показания счётчиков, заявки и документы этой квартиры. Если жильцов несколько, у каждого своя ссылка, а плата общая.\n\nПринимайте, только если знаете отправителя.${legal}`,null,{inviteCode:code},channel);
+  } catch(e) {
+    if(!e.status)throw e;
+    if(e.reason==='member') reply(db,u.id,'Вы уже в этой аренде','Приглашение принято раньше. Откройте Ключи — квартира уже там.',null,{target:'j_'+e.lease_id},channel);
+    else if(e.reason==='own') reply(db,u.id,'Это ваша ссылка',e.message+'\n\nОтправить её можно в Ключах: Квартира → Жильцы → «Поделиться».',null,{},channel);
+    else reply(db,u.id,'Ссылка не сработала',e.message,null,{},channel);
+  }
 }
 function callbackAction(db,fn) {
   db.exec('SAVEPOINT callback_action');
@@ -77,7 +87,10 @@ function callbackAction(db,fn) {
 }
 const setBot=(db,u,channel,on)=>db.run(`UPDATE users SET ${PLATFORMS[channel].bot}=? WHERE id=?`,on?1:0,u.id);
 function welcomeReply(db,u,channel) {
-  reply(db,u.id,'Ключи — всё о вашей аренде','Платежи, показания, заявки, покупки и посещения — в одной истории.\n\n/start — открыть приложение\n/help — помощь',null,{},channel);
+  const tenant=db.get("SELECT l.id FROM lease_members lm JOIN leases l ON l.id=lm.lease_id WHERE lm.user_id=? AND l.status!='ended' ORDER BY lm.joined_at DESC LIMIT 1",u.id);
+  const owner=db.get('SELECT 1 FROM apartments WHERE owner_id=?',u.id);
+  const text=tenant||owner?'Платежи, показания счётчиков, заявки и документы — в одном месте. Уведомления о новых событиях приходят сюда.\n\n/help — помощь':'Платежи, показания счётчиков, заявки и документы по квартире — в одном месте, для собственника и жильцов.\n\nЖилец? Откройте ссылку-приглашение от собственника: бот покажет квартиру и попросит подтвердить.\nСобственник? Откройте Ключи, добавьте квартиру и отправьте жильцам ссылки.\n\n/help — помощь';
+  reply(db,u.id,'Ключи — аренда без хаоса',text,null,tenant&&!owner?{target:'j_'+tenant.id}:{},channel);
 }
 function linkReply(db,u,code,channel) {
   const name=PLATFORMS[channel].name;
@@ -87,8 +100,8 @@ function linkReply(db,u,code,channel) {
     else reply(db,u.id,`Подключить ${name}?`,`Код из профиля Ключей привяжет этот ${name} к аккаунту «${p.name}». Квартиры, аренды и история станут доступны здесь.\n\nПодтверждайте, только если код получили вы сами.`,null,{linkCode:code.toUpperCase().replace(/-/g,'')},channel);
   } catch(e) {if(!e.status)throw e;reply(db,u.id,'Не удалось подключить',e.message,null,{},channel);}
 }
-function startPayload(db,u,payload,channel) {
-  if(payload.startsWith('join_')) inviteReply(db,u,payload.slice(5),channel);
+function startPayload(db,u,payload,channel,config) {
+  if(payload.startsWith('join_')) inviteReply(db,u,payload.slice(5),channel,config);
   else if(payload.startsWith('link_')) linkReply(db,u,payload.slice(5),channel);
   else welcomeReply(db,u,channel);
 }
@@ -97,9 +110,15 @@ function callbackReply(db,u,data,answerId,channel) {
   let answer='Откройте приложение для этого действия.',title='Ключи',extra={},recipient=u.id;
   try {
     if(parts.length===2&&parts[0]==='join') {
-      const joined=callbackAction(db,()=>joinInvite(db,u,parts[1]));
-      setBot(db,u,channel,true);
-      answer='Вы присоединились к аренде. Теперь откройте её в мини-приложении.';title='Приглашение принято';extra.target='l_'+joined.lease_id;
+      try {
+        const joined=callbackAction(db,()=>joinInvite(db,u,parts[1]));
+        setBot(db,u,channel,true);
+        const apt=db.get('SELECT a.title,o.name FROM apartments a JOIN users o ON o.id=a.owner_id WHERE a.id=?',joined.apartment_id);
+        answer=`Вы в аренде «${apt.title}». ${apt.name} получит уведомление.\n\nОткройте Ключи: там платежи, счётчики и заявки по квартире. Уведомления будут приходить в этот чат.`;title='Готово, приглашение принято';extra.target='j_'+joined.lease_id;
+      } catch(e) {
+        if(e.reason!=='member') throw e;
+        answer='Приглашение уже принято. Квартира — в Ключах.';title='Вы уже в этой аренде';extra.target='j_'+e.lease_id;
+      }
     } else if(parts.length===4&&parts[0]==='visit'&&parts[3]==='accept') {
       const result=callbackAction(db,()=>actionRecord(db,u,parts[1],{action:'accept',version:Number(parts[2])}));
       answer=result.status==='accepted'?'Время посещения подтверждено всеми участниками.':'Ваш ответ сохранён. Ждём остальных участников.';title='Посещение';extra.recordId=result.id;
@@ -113,9 +132,9 @@ function callbackReply(db,u,data,answerId,channel) {
   } catch(e) {if(!e.status)throw e;answer=e.message;}
   reply(db,recipient,title,answer,answerId,extra,channel);
 }
-function textReply(db,u,raw,channel) {
+function textReply(db,u,raw,channel,config={}) {
   const cmd=parseCommand(raw);
-  if(cmd?.command==='/start'&&/^(join|link)_[A-Za-z0-9_-]{1,100}$/.test(cmd.arg)) return startPayload(db,u,cmd.arg,channel);
+  if(cmd?.command==='/start'&&/^(join|link)_[A-Za-z0-9_-]{1,100}$/.test(cmd.arg)) return startPayload(db,u,cmd.arg,channel,config);
   if(cmd?.command==='/start'&&!cmd.arg&&channel==='telegram') return welcomeReply(db,u,channel);
   const command=cmd&&!cmd.arg?cmd.command:'';
   if(command==='/stop') {const s=settings(u);s.bot=false;db.run('UPDATE users SET settings=? WHERE id=?',JSON.stringify(s),u.id);reply(db,u.id,'Уведомления выключены','Включить снова: /notifications. История остаётся в приложении.',null,{},channel);}
@@ -123,7 +142,7 @@ function textReply(db,u,raw,channel) {
   else if(command==='/help') reply(db,u.id,'Помощь','Собственник отправляет персональную ссылку. Откройте её в боте и подтвердите присоединение.\n\n/start — приложение\n/notifications — включить уведомления\n/stop — выключить уведомления\n\nПлатежи совершаются вне приложения. Ключи не заменяет экстренные службы.',null,{},channel);
   else reply(db,u.id,'Ваши дела в Ключах','Чтобы сообщение не потерялось, создайте заявку или комментарий в карточке своей аренды.',null,{},channel);
 }
-function processMaxUpdate(db,row,b) {
+function processMaxUpdate(db,row,b,config) {
   const source=b.callback?.user||b.message?.sender||b.user;
   const chatType=b.message?.recipient?.chat_type;
   if(!source||!Number.isSafeInteger(source.user_id)||source.user_id<=0||source.is_bot||b.is_channel||
@@ -132,27 +151,27 @@ function processMaxUpdate(db,row,b) {
   }
   const u=ensureMaxUser(db,{id:String(source.user_id),name:[source.first_name,source.last_name].filter(Boolean).join(' ')||source.name||'Пользователь MAX'});
   if(['bot_stopped','dialog_removed'].includes(b.update_type)) setBot(db,u,'max',false);
-  else if(b.update_type==='bot_started') {setBot(db,u,'max',true);startPayload(db,u,String(b.payload||''),'max');}
+  else if(b.update_type==='bot_started') {setBot(db,u,'max',true);startPayload(db,u,String(b.payload||''),'max',config);}
   else if(b.update_type==='message_callback') callbackReply(db,u,b.callback.payload,b.callback.callback_id,'max');
-  else if(b.update_type==='message_created') {setBot(db,u,'max',true);textReply(db,u,String(b.message.body?.text||'').trim(),'max');}
+  else if(b.update_type==='message_created') {setBot(db,u,'max',true);textReply(db,u,String(b.message.body?.text||'').trim(),'max',config);}
   db.run("UPDATE webhook_inbox SET status='processed',error=NULL WHERE id=?",row.id);
 }
-function processTelegramUpdate(db,row,update) {
+function processTelegramUpdate(db,row,update,config) {
   const ev=normalizeTelegramUpdate(update);
   if(!ev) {db.run("UPDATE webhook_inbox SET status='ignored' WHERE id=?",row.id);return;}
   const u=ensureTelegramUser(db,ev.user);
   if(ev.kind==='stopped') setBot(db,u,'telegram',false);
   else if(ev.kind==='started') setBot(db,u,'telegram',true);
   else if(ev.kind==='callback') {setBot(db,u,'telegram',true);callbackReply(db,db.get('SELECT * FROM users WHERE id=?',u.id),ev.data,ev.callbackId,'telegram');}
-  else if(ev.kind==='text') {setBot(db,u,'telegram',true);textReply(db,db.get('SELECT * FROM users WHERE id=?',u.id),ev.text,'telegram');}
+  else if(ev.kind==='text') {setBot(db,u,'telegram',true);textReply(db,db.get('SELECT * FROM users WHERE id=?',u.id),ev.text,'telegram',config);}
   db.run("UPDATE webhook_inbox SET status='processed',error=NULL WHERE id=?",row.id);
 }
-export function processInbox(db) {
+export function processInbox(db,config={}) {
   for(const row of db.all("SELECT * FROM webhook_inbox WHERE status='queued' AND attempts<5 LIMIT 20")) {
     try {db.tx(()=>{
       const b=JSON.parse(row.body);
-      if(b.source==='telegram') processTelegramUpdate(db,row,b.update);
-      else processMaxUpdate(db,row,b);
+      if(b.source==='telegram') processTelegramUpdate(db,row,b.update,config);
+      else processMaxUpdate(db,row,b,config);
     });}catch(e) {db.run("UPDATE webhook_inbox SET attempts=attempts+1,error=? WHERE id=?",String(e.message).slice(0,200),row.id);}
   }
 }

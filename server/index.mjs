@@ -20,7 +20,7 @@ async function tick() {
     if (busy) { again = true; return; }
     busy = true;
     try {
-        processInbox(db);
+        processInbox(db, config);
         if (Date.now() - lastRecurring > 60000) {
             db.tx(() => generateRecurring(db, config));
             lastRecurring = Date.now();

@@ -35,16 +35,16 @@ function requireFiles(db, u, id) { const file = db.get('SELECT * FROM files WHER
     D.recordAccess(db, u, file.record_id);
 else if (file.user_id !== u.id)
     fail(404, 'Файл не найден.'); return file; }
-route('GET', '/api/config', ({ config }) => ({ mode: config.mode, bot_url: botLink(config), telegram: { enabled: config.telegram, bot_url: telegramBotLink(config) }, operator: config.operator, support: config.support, privacy_url: config.privacyUrl, terms_url: config.termsUrl, version: VERSION }), { auth: false });
+route('GET', '/api/config', ({ config }) => ({ mode: config.mode, bot_url: botLink(config), telegram: { enabled: config.telegram, bot_url: telegramBotLink(config) }, max: { enabled: !!config.botUsername }, operator: config.operator, support: config.support, privacy_url: config.privacyUrl, terms_url: config.termsUrl, version: VERSION }), { auth: false });
 route('GET', '/api/health', ({ db, config }) => { db.get('SELECT 1'); return { ok: true, version: VERSION, mode: config.mode, ...(config.telegram ? { telegram: config.tgMode === 'polling' ? (telegramHealth() || { mode: 'polling', state: 'off' }) : { mode: 'webhook' } } : {}) }; }, { auth: false });
 route('POST', '/api/auth/demo', ({ db, body, res, config }) => { if (config.mode !== 'demo' && config.mode !== 'test')
     fail(404, 'Недоступно.'); const role = V.choice(body.role, ['tenant', 'owner']); const u = db.get('SELECT * FROM users WHERE id=?', 'demo-' + role); if (!u)
     fail(400, 'Демо не инициализировано.'); db.run('UPDATE users SET role=? WHERE id=?', role, u.id); const s = createSession(db, u.id); cookie(res, s.token, config); return { ...s, user: D.safeUser({ ...u, role }) }; }, { auth: false });
 route('POST', '/api/auth/max', ({ db, body, res, config }) => { if (config.mode === 'demo')
-    fail(409, 'Деморежим не принимает реальные аккаунты MAX. Для запуска настройте APP_MODE=production.'); const data = validateInitData(body.initData, config.botToken), u = ensureMaxUser(db, data), s = createSession(db, u.id); cookie(res, s.token, config); return { ...s, user: D.safeUser(u), start_param: data.startParam }; }, { auth: false });
+    fail(409, 'Деморежим не принимает реальные аккаунты MAX. Для запуска настройте APP_MODE=production.'); const data = validateInitData(body.initData, config.botToken); if (body.probe === true && !db.get('SELECT 1 FROM users WHERE max_id=?', data.id)) return { known: false, start_param: data.startParam }; const u = ensureMaxUser(db, data), s = createSession(db, u.id); cookie(res, s.token, config); return { ...s, known: true, user: D.safeUser(u), start_param: data.startParam }; }, { auth: false });
 route('POST', '/api/auth/telegram', ({ db, body, res, config }) => { if (config.mode === 'demo')
     fail(409, 'Деморежим не принимает реальные аккаунты Telegram. Для запуска настройте APP_MODE=production.'); if (!config.tgBotToken)
-    fail(503, 'Вход через Telegram ещё не подключён.'); const data = validateInitData(body.initData, config.tgBotToken, { platform: 'telegram' }), u = db.tx(() => ensureTelegramUser(db, data)), s = createSession(db, u.id); cookie(res, s.token, config); return { ...s, user: D.safeUser(u), start_param: data.startParam }; }, { auth: false });
+    fail(503, 'Вход через Telegram ещё не подключён.'); const data = validateInitData(body.initData, config.tgBotToken, { platform: 'telegram' }); if (body.probe === true && !db.get('SELECT 1 FROM users WHERE tg_id=?', data.id)) return { known: false, start_param: data.startParam }; const u = db.tx(() => ensureTelegramUser(db, data)), s = createSession(db, u.id); cookie(res, s.token, config); return { ...s, known: true, user: D.safeUser(u), start_param: data.startParam }; }, { auth: false });
 // A one-time code from the profile attaches a second messenger to this account.
 route('POST', '/api/account-links', ({ db, user, config }) => { if (user.demo)
     fail(409, 'В деморежиме мессенджеры не подключаются.'); const link = createAccountLink(db, user); return { ...link, telegram_url: user.tg_id ? '' : telegramBotLink(config, 'link_' + link.code), max_url: user.max_id || !config.botUsername ? '' : botLink(config, 'link_' + link.code) }; }, { mutate: true });
@@ -83,7 +83,16 @@ route('POST', '/api/apartments/:id/delete', ctx => {
 
 route('POST', '/api/apartments/:id/leases', ({ db, user, body, params }) => D.createLease(db, user, params.id, body), { mutate: true });
 route('POST','/api/leases/:id/archive-draft',({db,user,params})=>D.archiveDraftLease(db,user,params.id),{mutate:true});
-route('POST', '/api/leases/:id/invite', ({ db, user, params, config, body }) => { const i = D.createInvite(db, user, params.id); const links = { max: config.botUsername || !config.telegram ? botLink(config, 'join_' + i.code) : '', telegram: config.telegram ? telegramBotLink(config, 'join_' + i.code) : '' }; const preferred = body.platform === 'telegram' && links.telegram ? 'telegram' : links.max ? 'max' : 'telegram'; return { ...i, url: links[preferred], platform: preferred, links }; }, { mutate: true });
+// Links for each configured messenger; the owner's own messenger goes first.
+function inviteLinks(config, i, platform) { const links = { max: config.botUsername || !config.telegram ? botLink(config, 'join_' + i.code) : '', telegram: config.telegram ? telegramBotLink(config, 'join_' + i.code) : '' }; const preferred = platform === 'telegram' && links.telegram ? 'telegram' : links.max ? 'max' : 'telegram'; return { ...i, url: links[preferred], platform: preferred, links, days: D.INVITE_DAYS }; }
+route('POST', '/api/leases/:id/invite', ({ db, user, params, config, body }) => inviteLinks(config, D.createInvite(db, user, params.id, { label: body.label, secret: config.secret }), body.platform), { mutate: true });
+route('POST', '/api/invites/:id/share', ({ db, user, params, config, body }) => inviteLinks(config, D.shareInvite(db, user, params.id, config.secret), body.platform), { mutate: true });
+route('POST', '/api/invites/:id/renew', ({ db, user, params, config, body }) => inviteLinks(config, D.renewInvite(db, user, params.id, config.secret), body.platform), { mutate: true });
+route('POST', '/api/invites/:id/revoke', ({ db, user, params }) => D.revokeInvite(db, user, params.id), { mutate: true });
+// In-app confirmation for a link opened inside the Mini App (startapp=join_…). The session is
+// already proven by the messenger signature, so this is as safe as the bot button.
+route('POST', '/api/invites/preview', ({ db, user, body }) => { try { const c = D.previewInvite(db, user, body.code); return { ok: true, owner: c.owner, apartment: c.apartment.title, unit: c.unit, rent: c.lease.rent, lease_id: c.lease.id, label: c.meta?.label || '' }; } catch (e) { if (!e.status) throw e; return { ok: false, reason: e.reason || 'error', message: e.message, lease_id: e.lease_id || null }; } });
+route('POST', '/api/invites/accept', ({ db, user, body }) => D.joinInvite(db, user, body.code), { mutate: true });
 route('POST', '/api/join', ({ db, user, body, config }) => { if(config.production) fail(409,'Примите приглашение в боте Ключей. Откройте персональную ссылку собственника.'); return D.joinInvite(db,user,body.code); }, { mutate: true });
 route('POST', '/api/apartments/:id/units', ({db,user,params,body}) => createUnit(db,user,params.id,body), {mutate:true});
 route('POST', '/api/units/:id', ({db,user,params,body}) => updateUnit(db,user,params.id,body), {mutate:true});

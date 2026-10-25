@@ -71,8 +71,9 @@ export function openDatabase(directory) {
     } catch(e){db.close();throw e;}
 }
 
-// Telegram identity is additive and keeps schema_version 3, so the previous
-// release can still open the same database during a code-only rollback.
+// Telegram identity, invite metadata and bot state are additive and keep
+// schema_version 3, so the previous release can still open the same database
+// during a code-only rollback (old code ignores the extra tables).
 export function ensureIdentitySchema(db) {
     const columns = db.all('PRAGMA table_info(users)').map(c => c.name);
     db.tx(() => {
@@ -88,6 +89,19 @@ export function ensureIdentitySchema(db) {
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS account_links_user ON account_links(user_id);
+            CREATE TABLE IF NOT EXISTS invite_meta(
+                hash TEXT PRIMARY KEY,
+                lease_id TEXT NOT NULL,
+                label TEXT NOT NULL DEFAULT '',
+                created_by TEXT,
+                created_at TEXT NOT NULL,
+                code_enc TEXT,
+                opened_at TEXT, opened_by TEXT,
+                accepted_at TEXT,
+                revoked_at TEXT,
+                replaced_by TEXT
+            );
+            CREATE INDEX IF NOT EXISTS invite_meta_lease ON invite_meta(lease_id);
             CREATE TABLE IF NOT EXISTS bot_state(
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,

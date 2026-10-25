@@ -8,6 +8,7 @@ import { platform, bridgeReady, launchData, hostScheme, onHostSchemeChange, pain
 import { request, post, setToken, uploadFiles } from './api.js';
 import { coverFields, handleCoverChange, collectCover, releaseCoverPreviews } from './images.js';
 import { welcome, roleView, shell, pageView, model, actionsFor } from './views.js';
+import { peopleSection, inviteCreateForm, inviteResult, inviteManage, invitePreview, inviteProblem, inviteOutside, joinedWelcome } from './invites-ui.js';
 import { uuid, esc, icon, button, notice, field, textarea, select, uploadField, localISO, today, parseAmount, money, number, date, categoryNames, kindNames } from './utils.js';
 const root = document.querySelector('#root'), modalRoot = document.querySelector('#modal-root'), toastRoot = document.querySelector('#toast-root');
 const state = { config: null, data: null, screen: 'loading', page: 'home', recordId: null, apartmentId: localStorage.getItem('keys.apartment') || '', leaseId: '', scope: 'all', filter: 'all', unitScope: '', aptTab: 'overview', modal: null, depth: 0 };
@@ -283,21 +284,15 @@ async function clickAction(el) {
             return;
         }
         bridgeData = bridgeData || window.WebApp?.initData || '';
+        if (!bridgeData && state.config.mode !== 'demo' && state.pendingStart?.startsWith('join_')) {
+            modal('Приглашение в Ключи', inviteOutside(inviteCode(state.pendingStart), state.config));
+            return;
+        }
         if (!bridgeData) {
             modal('Вход через ' + platform.label, `<p>Откройте Ключи из бота ${platform.label}. Это нужно для безопасного входа в вашу квартиру.</p><div class="action-row">${button('Открыть бота', 'open-bot')}</div>`);
             return;
         }
-        const session = await post(platform.telegram ? '/auth/telegram' : '/auth/max', { initData: bridgeData });
-        setToken(session.token);
-        state.pendingStart = session.start_param;
-        state.data = await request('/state');
-        initializeGuide();
-        state.screen = state.data.apartments.length ? 'app' : 'role';
-        render();
-        if (state.screen === 'app') {
-            nav('home', null, { replace: true });
-            applyStart();
-        }
+        await enterApp(await post(platform.telegram ? '/auth/telegram' : '/auth/max', { initData: bridgeData }));
         return;
     }
     if (act === 'role-back') {
@@ -329,6 +324,7 @@ async function clickAction(el) {
         return;
     }
     if (act === 'nav') {
+        if (state.modal) closeModal();
         nav(el.dataset.page);
         return;
     }
@@ -407,19 +403,38 @@ async function clickAction(el) {
     }
     if (act === 'invite') {
         const { l } = chosenLease();
-        const invite = await post('/leases/' + l.id + '/invite', { platform: platform.name });
-        const botName = invite.platform === 'telegram' ? 'Telegram' : 'MAX', otherName = botName === 'MAX' ? 'Telegram' : 'MAX', other = invite.links?.[otherName === 'MAX' ? 'max' : 'telegram'];
-        modal('Пригласить арендатора',`<p>Отправьте эту персональную ссылку будущему жильцу. В рабочей версии она сначала открывает бота Ключей в ${botName}: человек видит квартиру и подтверждает присоединение, а затем открывает Ключи.</p><div class="code-box invite-url">${esc(invite.url)}</div>${other && state.config.mode !== 'demo' ? `<p class="small-note">Если жилец пользуется ${otherName}, отправьте ему эту же ссылку для ${otherName}:<br><span class="invite-url">${esc(other)}</span></p>` : ''}${notice('Одна ссылка — один новый участник, срок 72 часа. Для следующего жильца создайте ещё одну ссылку: предыдущие приглашения продолжат действовать. Не публикуйте ссылки в общем доступе.')}<div class="action-row">${button(icon('copy',18)+' Скопировать ссылку','copy-code')}${button(icon('send',18)+' Поделиться','share-invite','','secondary')}</div>${state.config.mode==='demo'?`<p class="small-note">Локальная демонстрация без реального бота. Код для проверки: ${esc(invite.code)}</p>`:''}`,{invite});
+        modal('Пригласить жильца', inviteCreateForm(l, unitTitle(l)));
+        return;
+    }
+    if (act === 'invite-manage') {
+        const i = (state.data.invites || []).find(x => x.id === el.dataset.id);
+        if (!i) throw Error('Приглашение не найдено. Обновите страницу.');
+        modal(i.label ? 'Ссылка для «' + i.label + '»' : 'Ссылка-приглашение', inviteManage(i));
+        return;
+    }
+    if (act === 'invite-share-again' || act === 'invite-renew') {
+        const invite = await post('/invites/' + encodeURIComponent(el.dataset.id) + (act === 'invite-renew' ? '/renew' : '/share'), { platform: platform.name });
+        showInviteResult(invite, act === 'invite-renew');
+        reload().catch(() => {});
+        return;
+    }
+    if (act === 'invite-revoke') {
+        modal('Отозвать ссылку?', formContent('invite-revoke', notice('Ссылка перестанет работать сразу. Если жилец ещё не подтвердил приглашение, отправьте ему новую.', 'amber'), 'Отозвать', `data-id="${esc(el.dataset.id)}"`));
         return;
     }
     if (act === 'copy-code') {
         await copyText(state.modal.invite.url);
         return;
     }
+    if (act === 'copy-other-link') {
+        const i = state.modal.invite, other = i.links?.[i.platform === 'telegram' ? 'max' : 'telegram'];
+        if (other) await copyText(other);
+        return;
+    }
     if (act === 'share-invite') {
-        const i = state.modal.invite, text = `Приглашаю в Ключи — всё о нашей квартире.\nОткройте ссылку и подтвердите приглашение в боте:\n${i.url}`;
+        const i = state.modal.invite, lead = 'Приглашаю в Ключи — там платежи, счётчики и заявки по нашей квартире. Откройте ссылку и нажмите «Принять приглашение» в боте:', text = lead + '\n' + i.url;
         if (platform.telegram && bridgeData) {
-            await share('Приглашаю в Ключи — всё о нашей квартире. Откройте ссылку и подтвердите приглашение в боте.', i.url);
+            await share(lead, i.url);
         }
         else if (window.WebApp?.initData && window.WebApp.shareMaxContent) {
             try {
@@ -472,7 +487,7 @@ async function clickAction(el) {
         return;
     }
     if(act==='archive-draft'){const {l}=chosenLease();modal('Отменить пустую аренду',formContent('archive-draft',notice('Сама квартира или комната останется. Неиспользованный период уйдёт в архив, приглашения перестанут действовать.','amber'),'Отменить период',`data-id="${l.id}"`));return;}
-    if(act==='lease-select') { const l=state.data.leases.find(x=>x.id===el.dataset.id);state.leaseId=l.id;state.apartmentId=l.apartment_id;state.aptTab='overview';nav('apartments');return; }
+    if(act==='lease-select') { if(state.modal)closeModal(); const l=state.data.leases.find(x=>x.id===el.dataset.id);if(!l){toast('Эта аренда недоступна.',true);return;}state.leaseId=l.id;state.apartmentId=l.apartment_id;state.aptTab='overview';nav('apartments');return; }
     if(act==='lease-page'){state.unitScope=el.dataset.id;state.scope=model(state).a.id;nav(el.dataset.page,null,{keepScope:true});return;}
     if(act==='new-unit'||act==='edit-unit'){unitModal(el.dataset.id);return;}
     if(act==='new-meter'||act==='edit-meter'){meterModal(el.dataset.id);return;}
@@ -536,10 +551,17 @@ async function clickAction(el) {
         return;
     }
 }
-function applyStart() {
+async function applyStart() {
     const start=state.pendingStart||new URLSearchParams(location.search).get('startapp');state.pendingStart='';
     if(!start)return;
-    if(start.startsWith('join_'))return showJoin(start.slice(5));
+    if(start.startsWith('join_'))return openInvite(start.slice(5)).catch(e=>toast(e.message,true));
+    if(start.startsWith('j_')) {
+        const l=state.data.leases.find(x=>x.id===start.slice(2));
+        if(!l){toast('Эта аренда недоступна.',true);return;}
+        state.apartmentId=l.apartment_id;state.leaseId=l.id;state.aptTab='overview';nav('apartments',null,{replace:true});
+        modal('Добро пожаловать!',joinedWelcome(state,l));
+        return;
+    }
     if(start.startsWith('r_')||start.startsWith('c_')) {
         const record=state.data.records.find(r=>r.id===start.slice(2));
         if(record){state.apartmentId=record.apartment_id;state.leaseId=record.lease_id;}
@@ -554,7 +576,26 @@ function applyStart() {
     }
 }
 function showJoin(code='') {
-    modal('Присоединиться к аренде',formContent(state.config.mode==='production'?'join-bot':'join',field('Код из приглашения','code','text',code,'required maxlength="100" autocomplete="off" placeholder="Код от собственника"')+notice(`Приглашение открывает историю конкретной аренды. В рабочей версии его нужно подтвердить в боте Ключей в ${platform.label}, прежде чем открывать приложение.`),state.config.mode==='production'?'Открыть приглашение в боте':'Присоединиться (демо)'));
+    if(state.config.mode!=='demo'&&!state.platform?.inHost&&code)return modal('Приглашение в Ключи',inviteOutside(code,state.config));
+    modal('Присоединиться к аренде',formContent(state.config.mode==='production'?'join-bot':'join',field('Ссылка или код из приглашения','code','text',code,'required maxlength="300" autocomplete="off" placeholder="Вставьте ссылку от собственника"')+notice('Собственник присылает ссылку вида t.me/…?start=join_… или max.ru/…?start=join_… Можно вставить её целиком.'),state.config.mode==='production'?'Открыть приглашение':'Присоединиться (демо)'));
+}
+// Accepts a bare code or a whole link with start=join_… / startapp=join_… / ?invite=….
+function inviteCode(raw) {
+    const t=String(raw||'').trim(),m=t.match(/(?:join_|[?&]invite=)([A-Za-z0-9_-]{8,100})/);
+    return m?m[1]:t.replace(/^join_/,'');
+}
+async function showInviteResult(invite, renewed=false) {
+    modal(renewed?'Новая ссылка':'Ссылка для жильца',inviteResult(invite,{inHost:!!state.platform?.inHost,platformLabel:platform.label,renewed}),{invite});
+}
+// A link opened inside the Mini App: confirm here, no detour through the bot chat.
+async function openInvite(code) {
+    code=inviteCode(code);
+    if(!code)return;
+    if(state.config.mode!=='demo'&&!state.platform?.inHost)return modal('Приглашение в Ключи',inviteOutside(code,state.config));
+    if(state.config.mode==='demo')return showJoin(code);
+    const p=await post('/invites/preview',{code});
+    if(!p.ok)return modal(p.reason==='member'?'Вы уже в этой аренде':'Ссылка не сработала',inviteProblem(p));
+    modal('Приглашение в аренду',invitePreview(p,code));
 }
 async function copyText(t) { try {
     await navigator.clipboard.writeText(t);
@@ -706,14 +747,37 @@ async function submit(form) {
             message = 'Аккаунт подключён: квартиры и история теперь здесь';
         }
         if (type === 'join') {
-            result = await post('/join', { code: data.code.trim() }, key);
+            result = await post('/join', { code: inviteCode(data.code) }, key);
             state.apartmentId = result.apartment_id;
             state.leaseId = result.lease_id;
             message = 'Вы присоединились к аренде';
         }
         if(type==='archive-draft'){await post('/leases/'+form.dataset.id+'/archive-draft',{},key);state.leaseId='';message='Неиспользованный период отменён';}
+        if(type==='invite-create') {
+            const invite=await post('/leases/'+form.dataset.lease+'/invite',{platform:platform.name,label:String(data.label||'').trim()},key);
+            if(state.modal)state.modal.busy=false;
+            await showInviteResult(invite);
+            reload().catch(()=>{});
+            return;
+        }
+        if(type==='invite-revoke') {
+            await post('/invites/'+encodeURIComponent(form.dataset.id)+'/revoke',{},key);
+            message='Ссылка отозвана';
+        }
+        if(type==='invite-accept') {
+            result=await post('/invites/accept',{code:form.dataset.code},key);
+            if(platform.telegram&&bridgeData&&!state.data.user.tg_bot_enabled&&await requestWriteAccess())await post('/profile/telegram-write').catch(()=>{});
+            if(state.modal)state.modal.busy=false;
+            closeModal();
+            await reload();
+            state.pendingStart='j_'+result.lease_id;
+            applyStart();
+            toast('Вы присоединились к аренде');
+            return;
+        }
         if(type==='join-bot') {
-            const url=new URL(state.config.bot_url);url.searchParams.set('start','join_'+data.code.trim());
+            if(state.platform?.inHost){if(state.modal)state.modal.busy=false;closeModal();await openInvite(data.code);return;}
+            const url=new URL(state.config.bot_url);url.searchParams.set('start','join_'+inviteCode(data.code));
             if(platform.telegram&&bridgeData)openLink(url.href);else window.location.href=url.href;
             if(state.modal)state.modal.busy=false;closeModal();return;
         }
@@ -847,6 +911,31 @@ window.addEventListener('popstate', () => { if (state.screen === 'app') {
 } });
 window.addEventListener('offline', () => toast('Нет сети. Несохранённые данные остаются в открытой форме.', true));
 window.addEventListener('online', () => { toast('Соединение восстановлено'); syncGuide(state.data?.user).then(updateGuidePrompt); });
+async function enterApp(session) {
+    setToken(session.token);
+    state.pendingStart = session.start_param || state.pendingStart;
+    state.data = await request('/state');
+    initializeGuide();
+    if (state.data.user.settings.theme) setTheme(state.data.user.settings.theme);
+    // An invite link skips the role question: the person is joining as a tenant.
+    state.screen = state.data.apartments.length || String(state.pendingStart || '').startsWith('join_') ? 'app' : 'role';
+    render();
+    if (state.screen === 'app') {
+        nav('home', null, { replace: true, learn: false });
+        await applyStart();
+    }
+}
+// Returning users skip the welcome screen; a first launch still shows it with the terms.
+async function silentLogin() {
+    const initData = bridgeData || window.WebApp?.initData || '';
+    if (!initData) return false;
+    try {
+        const session = await post(platform.telegram ? '/auth/telegram' : '/auth/max', { initData, probe: true });
+        if (!session.token) return false;
+        await enterApp(session);
+        return true;
+    } catch { return false; }
+}
 async function boot() { try {
     await bridgeReady();
     bridgeData = bridgeData || launchData();
@@ -856,7 +945,8 @@ async function boot() { try {
     if (platform.telegram && state.config.telegram?.bot_url) state.config.bot_url = state.config.telegram.bot_url;
     state.platform = { ...platform, inHost: !!bridgeData };
     const params=new URLSearchParams(location.search);if(params.get('invite'))state.pendingStart='join_'+params.get('invite');else if(params.get('startapp'))state.pendingStart=params.get('startapp');
-    if (state.config.mode === 'production' && (bridgeData || window.WebApp?.initData)) {
+    if (state.config.mode !== 'demo' && (bridgeData || window.WebApp?.initData)) {
+        if (await silentLogin()) return;
         state.screen = 'welcome';
         render();
         return;
@@ -875,6 +965,9 @@ async function boot() { try {
         state.screen = 'welcome';
     }
     render();
+    // A link opened in a plain browser: point the person to their messenger right away.
+    if (state.screen === 'welcome' && !bridgeData && state.config.mode !== 'demo' && state.pendingStart?.startsWith('join_'))
+        modal('Приглашение в Ключи', inviteOutside(inviteCode(state.pendingStart), state.config));
 }
 catch (e) {
     root.innerHTML = `<div class="app-error">${icon('info', 35)}<h2>Не удалось загрузить Ключи</h2><p>${esc(e.message)}</p><button class="btn primary" data-act="reload-page">Попробовать снова</button></div>`;
@@ -886,7 +979,7 @@ setInterval(async () => { if (state.screen !== 'app' || state.modal || loading |
     const old = state.data;
     const next = await request('/state');
     state.data = next;
-    const changed = old.records.length !== next.records.length || old.notifications.length !== next.notifications.length || old.records.some((r, i) => r.id !== next.records[i]?.id || r.version !== next.records[i]?.version) || old.comments.length !== next.comments.length || old.apartments.length !== next.apartments.length || old.apartments.some((a, i) => a.id !== next.apartments[i]?.id || a.version !== next.apartments[i]?.version) || ['leases','units','meters','meter_history','recurring_rules'].some(k=>JSON.stringify(old[k])!==JSON.stringify(next[k]));
+    const changed = old.records.length !== next.records.length || old.notifications.length !== next.notifications.length || old.records.some((r, i) => r.id !== next.records[i]?.id || r.version !== next.records[i]?.version) || old.comments.length !== next.comments.length || old.apartments.length !== next.apartments.length || old.apartments.some((a, i) => a.id !== next.apartments[i]?.id || a.version !== next.apartments[i]?.version) || ['leases','units','meters','meter_history','recurring_rules','invites','members'].some(k=>JSON.stringify(old[k])!==JSON.stringify(next[k]));
     if (changed)
         render();
 }

@@ -866,3 +866,47 @@ body.modal-open { overflow: hidden; }
   .guide-prompt .btn { font-size: 13px; padding: 10px; }
   .guide-step { padding: 15px; gap: 10px; }
 }
+
+/* 12 · People and invite links (0.5) --------------------------------------- */
+.people-section .section-heading { align-items: center; }
+.section-count { display: inline-flex; min-width: 24px; height: 24px; align-items: center; justify-content: center; padding: 0 8px; border-radius: var(--radius-pill); background: var(--neutral); color: var(--neutral-ink); font-size: 12px; font-weight: 700; }
+.people-list { display: grid; padding: 6px; gap: 2px; margin-bottom: 12px; }
+.person-row { display: grid; grid-template-columns: 40px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 10px; border-radius: var(--radius-inner); background: transparent; border: 0; box-shadow: none; text-align: left; color: inherit; font: inherit; }
+.person-row.invite-row { grid-template-columns: 40px minmax(0,1fr) auto 16px; cursor: pointer; }
+.person-row.invite-row:hover { background: var(--surface-hover); }
+.person-copy { display: grid; min-width: 0; }
+.person-copy b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.person-copy small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.person-avatar { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 50%; background: var(--blue-icon); color: var(--blue-strong); font-weight: 700; }
+.person-avatar.large { width: 52px; height: 52px; font-size: 20px; }
+.invite-avatar { background: var(--neutral); color: var(--neutral-ink); }
+.invite-avatar[data-status="pending"] { background: var(--amber-icon); color: var(--amber-strong); }
+.invite-avatar[data-status="opened"] { background: var(--blue-icon); color: var(--blue-strong); }
+.invite-row[data-status="expired"] .person-copy, .invite-row[data-status="revoked"] .person-copy { opacity: .7; }
+.people-empty { display: grid; justify-items: center; gap: 6px; padding: 24px 20px; margin-bottom: 12px; text-align: center; border: 1px dashed var(--line); }
+.people-empty p { max-width: 340px; margin: 0; color: var(--muted); font-size: 13px; }
+.people-empty-art { display: inline-flex; width: 64px; height: 64px; align-items: center; justify-content: center; border-radius: 50%; background: var(--blue); color: var(--blue-strong); margin-bottom: 4px; }
+.invite-steps { display: grid; gap: 10px; }
+.invite-step { display: grid; grid-template-columns: 28px minmax(0,1fr); gap: 12px; align-items: start; }
+.invite-step b { display: block; font-size: 14px; }
+.invite-step small { color: var(--muted); font-size: 12px; }
+.invite-step-n { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: 50%; background: var(--tone-soft); color: var(--tone-strong); font-weight: 700; font-size: 13px; }
+.action-row.stacked { grid-template-columns: minmax(0,1fr); margin: 4px 0; }
+.invite-result, .joined-welcome { text-align: left; }
+.invite-lead { margin: 0; font-weight: 600; text-align: center; }
+.invite-success { display: flex; justify-content: center; padding-top: 4px; }
+.success-ring { display: inline-flex; width: 64px; height: 64px; align-items: center; justify-content: center; border-radius: 50%; background: var(--green); color: var(--green-strong); }
+.invite-url { word-break: break-all; font-size: 13px; user-select: all; }
+.invite-other { border-radius: var(--radius-inner); background: var(--field-bg); padding: 0 14px; }
+.invite-other summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-weight: 600; font-size: 14px; }
+.invite-other[open] { padding-bottom: 14px; }
+.invite-other .code-box { margin: 8px 0; }
+.invite-card { display: grid; grid-template-columns: 52px minmax(0,1fr); gap: 14px; align-items: center; padding: 16px; border-radius: var(--radius-inner); background: var(--blue); }
+.invite-card small { color: var(--blue-ink); font-size: 12px; }
+.invite-card b { display: block; font-size: 17px; }
+.invite-card span:not(.person-avatar) { color: var(--muted); font-size: 13px; }
+.joined-grid { display: grid; gap: 8px; }
+.joined-tile { display: grid; grid-template-columns: 24px minmax(0,1fr); grid-template-rows: auto auto; column-gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius-inner); background: var(--card); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.joined-tile svg { grid-row: span 2; color: var(--blue-strong); }
+.joined-tile small { color: var(--muted); font-size: 12px; }
+.btn.ghost.danger { color: var(--red-strong); }

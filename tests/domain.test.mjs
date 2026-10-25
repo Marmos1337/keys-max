@@ -25,7 +25,8 @@ test('Invites: independent invitations, single use and self-join denial',t=>{
  assert.throws(()=>f.db.tx(()=>D.joinInvite(f.db,f.owner,first.code)),status(400));
  f.db.tx(()=>D.joinInvite(f.db,f.other,first.code));const another=newUser(f.db);f.db.tx(()=>D.joinInvite(f.db,another,second.code));
  assert.equal(D.memberIds(f.db,l.id).length,2);assert.equal(f.db.get('SELECT tenant_id FROM leases WHERE id=?',l.id).tenant_id,f.other.id);
- assert.throws(()=>f.db.tx(()=>D.joinInvite(f.db,another,first.code)),status(400));
+ // An existing member reopening any link of the same lease is told they are already in.
+ assert.throws(()=>f.db.tx(()=>D.joinInvite(f.db,another,first.code)),e=>e.status===409&&e.reason==='member');
 });
 test('Invites: expired invitation grants no access',t=>{const f=fixture(t),a=f.db.tx(()=>D.createApartment(f.db,f.owner,apartmentInput)),l=f.db.get('SELECT * FROM leases WHERE apartment_id=?',a.id),i=D.createInvite(f.db,f.owner,l.id);f.db.run('UPDATE invites SET expires=0');assert.throws(()=>f.db.tx(()=>D.joinInvite(f.db,f.other,i.code)),status(400));});
 test('New tenancy never inherits previous tenant records or documents',t=>{const f=fixture(t);f.db.run("UPDATE leases SET status='ended' WHERE id=?",f.lease.id);const l=f.db.tx(()=>D.createLease(f.db,f.owner,f.lease.apartment_id,apartmentInput)),user=newUser(f.db),i=D.createInvite(f.db,f.owner,l.id);f.db.tx(()=>D.joinInvite(f.db,user,i.code));const s=D.bootstrap(f.db,user,f.config);assert.equal(s.leases.length,1);assert.equal(s.records.length,0);assert.equal(s.files.length,0);assert.ok(s.events.every(x=>x.lease_id===l.id));assert.throws(()=>f.create('ticket',ticket),status(409));assert.ok(D.bootstrap(f.db,f.tenant,f.config).records.length>0);});
