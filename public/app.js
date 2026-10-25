@@ -17,7 +17,15 @@ const state = { config: null, data: null, screen: 'loading', page: 'home', recor
 let guideVisitTimer;
 let bridgeData = launchData(), toastTimer, previousFocus = null, loading = false;
 const pendingFiles = new WeakMap();
-function render() { hydrateGuide(state.data?.user); rememberStrips(root); if (state.screen === 'app' && state.data)
+// Enter motion plays when the screen changes, not when the same screen re-renders after a save or a poll.
+let lastScreenKey = '', animTimer;
+function markEnter() {
+    const key = [state.screen, state.page, state.recordId, state.aptTab, state.apartmentId, state.leaseId].join('|');
+    if (key === lastScreenKey) return;
+    lastScreenKey = key; root.dataset.anim = 'enter'; clearTimeout(animTimer);
+    animTimer = setTimeout(() => { delete root.dataset.anim; }, 900);
+}
+function render() { hydrateGuide(state.data?.user); rememberStrips(root); markEnter(); if (state.screen === 'app' && state.data)
     root.innerHTML = shell(state, pageView(state));
 else if (state.screen === 'role')
     root.innerHTML = roleView(state);
@@ -53,7 +61,7 @@ function initializeGuide() {
     hydrateGuide(state.data?.user);
     syncGuide(state.data?.user).then(updateGuidePrompt);
 }
-function toast(message, error = false) { haptic(error ? 'error' : 'success'); clearTimeout(toastTimer); toastRoot.innerHTML = `<div class="toast ${error ? 'error' : ''}">${icon(error ? 'info' : 'check', 18)}<span>${esc(message)}</span></div>`; toastTimer = setTimeout(() => toastRoot.innerHTML = '', error ? 6500 : 4200); }
+function toast(message, error = false) { haptic(error ? 'error' : 'success'); clearTimeout(toastTimer); toastRoot.innerHTML = `<div class="toast ${error ? 'error' : ''}">${icon(error ? 'info' : 'check', 18)}<span>${esc(message)}</span></div>`; toastTimer = setTimeout(() => { const t = toastRoot.firstElementChild; if (!t) return; t.classList.add('out'); toastTimer = setTimeout(() => { if (t.isConnected) t.remove(); }, 210); }, error ? 6500 : 4200); }
 function routeFromLocation() { const [, app, page, id] = location.pathname.split('/'); if (app === 'app') {
     state.page = page || 'home';
     state.recordId = page === 'record' ? id : null;
@@ -73,16 +81,59 @@ function modalTone(html) {
     if (/apartment|lease|unit|photo|join/.test(name)) return 'blue';
     return state.data ? pageTone(state) : 'blue';
 }
-function modal(title, html, meta = {}) { releaseCoverPreviews(modalRoot); previousFocus = document.activeElement; state.modal = { title, ...meta }; modalRoot.innerHTML = `<div class="modal-overlay" data-overlay="true"><section class="modal" data-tone="${modalTone(html)}" role="dialog" aria-modal="true" aria-labelledby="dialog-title"${meta.descriptionId ? ` aria-describedby="${esc(meta.descriptionId)}"` : ''} tabindex="-1"><header class="modal-header"><h2 id="dialog-title">${esc(title)}</h2><button class="icon-button" data-act="close-modal" aria-label="Закрыть">${icon('close')}</button></header>${html}</section></div>`; document.body.classList.add('modal-open'); setTimeout(() => modalRoot.querySelector(meta.initialFocus || '.modal')?.focus({preventScroll: true}), 20); try {
-    closingConfirmation(true); syncBack();
+function modal(title, html, meta = {}) {
+    releaseCoverPreviews(modalRoot);
+    const open = modalRoot.querySelector('.modal-overlay:not(.closing) .modal');
+    if (!open) previousFocus = document.activeElement;
+    state.modal = { title, ...meta };
+    if (open) {
+        // One sheet, new content: the container stays, only the inside slides over.
+        const before = open.offsetHeight;
+        open.dataset.tone = modalTone(html);
+        open.querySelector('#dialog-title').textContent = title;
+        open.querySelectorAll(':scope > :not(.modal-header)').forEach(n => n.remove());
+        open.insertAdjacentHTML('beforeend', html);
+        // The sheet glides to its new height instead of jumping.
+        const after = open.offsetHeight;
+        if (Math.abs(after - before) > 4 && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            open.style.height = before + 'px'; open.style.transition = 'height 300ms cubic-bezier(.16,1,.3,1)';
+            requestAnimationFrame(() => { open.style.height = after + 'px'; });
+            setTimeout(() => { open.style.height = ''; open.style.transition = ''; }, 340);
+        }
+        if (meta.descriptionId) open.setAttribute('aria-describedby', meta.descriptionId); else open.removeAttribute('aria-describedby');
+        open.classList.remove('swap'); void open.offsetWidth; open.classList.add('swap');
+        open.scrollTop = 0;
+        enhanceUI(open);
+        setTimeout(() => (meta.initialFocus ? open.querySelector(meta.initialFocus) : open)?.focus({ preventScroll: true }), 20);
+    } else {
+        modalRoot.innerHTML = `<div class="modal-overlay" data-overlay="true"><section class="modal" data-tone="${modalTone(html)}" role="dialog" aria-modal="true" aria-labelledby="dialog-title"${meta.descriptionId ? ` aria-describedby="${esc(meta.descriptionId)}"` : ''} tabindex="-1"><header class="modal-header"><h2 id="dialog-title">${esc(title)}</h2><button class="icon-button" data-act="close-modal" aria-label="Закрыть">${icon('close')}</button></header>${html}</section></div>`;
+        enhanceUI(modalRoot);
+        setTimeout(() => modalRoot.querySelector(meta.initialFocus || '.modal')?.focus({ preventScroll: true }), 20);
+    }
+    document.body.classList.add('modal-open');
+    haptic('select');
+    try {
+        closingConfirmation(true); syncBack();
+    }
+    catch { }
 }
-catch { } }
-function closeModal() { if (state.modal?.busy)
-    return; releaseCoverPreviews(modalRoot); modalRoot.innerHTML = ''; state.modal = null; document.body.classList.remove('modal-open'); try {
-    closingConfirmation(false); syncBack();
+function closeModal() {
+    if (state.modal?.busy) return;
+    releaseCoverPreviews(modalRoot);
+    const overlay = modalRoot.querySelector('.modal-overlay');
+    state.modal = null;
+    document.body.classList.remove('modal-open');
+    if (overlay && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        // Play the exit, then remove only this sheet: a new one may already be open.
+        overlay.classList.add('closing');
+        setTimeout(() => { if (overlay.isConnected && overlay.classList.contains('closing')) overlay.remove(); }, 210);
+    } else modalRoot.innerHTML = '';
+    try {
+        closingConfirmation(false); syncBack();
+    }
+    catch { }
+    if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
 }
-catch { } if (previousFocus?.isConnected)
-    previousFocus.focus(); }
 function formContent(name, fields, submit = 'Сохранить', attrs = '') { return `<form class="form-stack" data-form="${name}" ${attrs}>${fields}<div class="form-error" role="alert"></div><button type="submit" class="btn primary wide">${submit}</button></form>`; }
 function setFormError(form, message){ const box=form.querySelector('.form-error'); if(box) box.textContent=message||''; }
 function chosenLease() { const m = model(state); if (!m.l)
@@ -1013,3 +1064,7 @@ window.addEventListener('resize', () => {
     cancelAnimationFrame(numericFrame);
     numericFrame = requestAnimationFrame(() => fitNumericLabels(root));
 });
+
+// The sticky top bar gets its hairline only once the page is scrolled.
+let scrolledFrame;
+window.addEventListener('scroll', () => { cancelAnimationFrame(scrolledFrame); scrolledFrame = requestAnimationFrame(() => document.body.classList.toggle('scrolled', window.scrollY > 4)); }, { passive: true });

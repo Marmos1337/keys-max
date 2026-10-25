@@ -18,7 +18,7 @@ import { enqueueTelegramUpdate, telegramBotLink } from './telegram.mjs';
 import { telegramHealth } from './telegram-poller.mjs';
 import { createAccountLink, claimAccountLink, PLATFORMS } from './links.mjs';
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
-const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.png': 'image/png', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json; charset=utf-8' };
+const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.png': 'image/png', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2' };
 const routes = [];
 function route(method, pattern, handler, { auth = true, mutate = false, binary = false, afterCommit = null } = {}) { const keys = []; const regex = new RegExp('^' + pattern.replace(/:([A-Za-z_]+)/g, (_, k) => { keys.push(k); return '([^/]+)'; }) + '$'); routes.push({ method, regex, keys, handler, auth, mutate, binary, afterCommit }); }
 function json(res, status, body) { const bytes = Buffer.from(JSON.stringify(body)); res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': bytes.length, 'Cache-Control': 'no-store' }); res.end(bytes); }
@@ -299,7 +299,7 @@ export function createServer(db, config) {
             const type = mime[path.extname(file)];
             if (!type)
                 fail(404, 'Файл не найден.');
-            res.writeHead(200, { 'Content-Type': type, 'Content-Length': info.size, 'Cache-Control': file.includes('/art/') ? 'public, max-age=86400' : 'no-cache' });
+            res.writeHead(200, { 'Content-Type': type, 'Content-Length': info.size, 'Cache-Control': file.includes('/art/') || file.includes('/fonts/') ? 'public, max-age=86400' : 'no-cache' });
             if (req.method === 'HEAD')
                 res.end();
             else

@@ -33,7 +33,8 @@ export function button(label, act, extra = '', kind = 'primary') {
     return `<button type="button" class="btn ${kind}${onlyIcon ? ' btn-icon' : ''}" data-act="${act}"${tone ? ` data-tone="${tone}"` : ''}${accessible} ${extra}>${label}</button>`;
 }
 export const section = (title, content, extra = '') => `<section class="section"><div class="section-heading"><h2>${title}</h2>${extra}</div>${content}</section>`;
-export const empty = (title, description, action = '') => `<div class="surface empty-state">${pillIcon('spark', 'neutral')}<h3>${title}</h3><p>${description}</p>${action}</div>`;
+// Empty screens say why they are empty and what to do: art (or an icon), a line, steps, one action.
+export const empty = (title, description, action = '', { art = '', steps = [], icon: name = 'spark', tone = 'neutral' } = {}) => `<div class="surface empty-state">${art ? `<img class="empty-art" src="/art/${esc(art)}.webp" alt="" loading="lazy" decoding="async">` : pillIcon(name, tone)}<h3>${title}</h3><p>${description}</p>${steps.length ? `<ol class="empty-steps">${steps.map(x => `<li>${x}</li>`).join('')}</ol>` : ''}${action}</div>`;
 export const notice = (text, color = 'neutral', name = 'info') => `<div class="notice ${color}" data-tone="${color}">${icon(name, 20)}<span>${text}</span></div>`;
 export const fileSize = n => n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)} МБ` : `${Math.ceil(n / 1024)} КБ`;
 export function field(label,name,type='text',value='',extra='') {

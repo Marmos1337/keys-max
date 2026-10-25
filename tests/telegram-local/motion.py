@@ -1,0 +1,42 @@
+# Motion check: page enter, staggered lists, bottom sheet, sheet swap, success mark,
+# toast. Prints the animations it saw and saves frames of the sheet and the success mark.
+# Usage: python motion.py <frames_dir>   (server on :3000 with seed-rich.mjs data)
+import os, subprocess, sys
+from playwright.sync_api import sync_playwright
+HERE = os.path.dirname(os.path.abspath(__file__)); TOKEN = '123456:local-test-token-abcdefghijklmnopqrstuv'; NODE = os.environ.get('NODE', 'node'); BASE = 'http://localhost:3000'
+OUT = sys.argv[1]; os.makedirs(OUT, exist_ok=True); results = []
+def check(name, cond, extra=''): results.append((name, bool(cond))); print(('PASS ' if cond else 'FAIL ') + name + ('' if cond else ' — ' + str(extra)[:200]))
+def launch(uid, name, scheme='light'): return subprocess.check_output([NODE, os.path.join(HERE, 'initdata.mjs'), TOKEN, str(uid), name, scheme, ''], text=True).strip()
+anim = lambda page, sel: page.evaluate("s => { const e = document.querySelector(s); return e ? getComputedStyle(e).animationName : null; }", sel)
+with sync_playwright() as p:
+    browser = p.chromium.launch(channel='chrome', headless=True)
+    ctx = browser.new_context(viewport={'width': 390, 'height': 844}, device_scale_factor=2, is_mobile=True, has_touch=True)
+    ctx.add_init_script("window.TelegramWebviewProxy={postEvent:function(){}};"); page = ctx.new_page()
+    page.goto(BASE + '/' + launch(777001, 'Анна')); page.wait_for_selector('.app-body'); page.wait_for_timeout(1200)
+    page.click('[data-act=nav][data-page=apartments] >> visible=true >> nth=0'); page.wait_for_timeout(60)
+    check('page enter: content fades up', anim(page, 'main > :first-child') == 'fade-up')
+    check('page enter: active nav pill springs in', anim(page, '.bottom-nav .nav-item.active .nav-icon') == 'nav-pill')
+    page.wait_for_timeout(1100)
+    check('re-render of the same screen does not replay the enter', page.evaluate("document.querySelector('#root').dataset.anim") is None)
+    page.click('.apartment-tabs [data-tab=meters]'); page.wait_for_timeout(60)
+    check('lists stagger in', anim(page, '.meters-grid > :nth-child(2)') == 'fade-up' and page.evaluate("getComputedStyle(document.querySelector('.meters-grid > :nth-child(2)')).animationDelay") != '0s')
+    page.wait_for_timeout(900); page.click('.apartment-tabs [data-tab=overview]'); page.wait_for_timeout(900)
+    page.click('.people-section [data-act=invite]')
+    for n, t in enumerate([30, 90, 150]): page.wait_for_timeout(t if n == 0 else 60); page.screenshot(path=f'{OUT}/motion-sheet-{n + 1}.png')
+    check('sheet slides up from the bottom on a phone', anim(page, '.modal') == 'sheet-up')
+    page.wait_for_timeout(500); page.fill('[data-form=invite-create] input[name=label]', 'Маша'); page.click('[data-form=invite-create] button[type=submit]'); page.wait_for_selector('[data-invite-result]'); page.wait_for_timeout(40); page.screenshot(path=f'{OUT}/motion-success-1.png')
+    check('same sheet swaps its content (no second sheet)', page.locator('.modal').count() == 1 and anim(page, '.modal.swap > .invite-result') == 'swap-in')
+    check('success ring pops', anim(page, '.success-ring') == 'ring-pop')
+    page.wait_for_timeout(200); page.screenshot(path=f'{OUT}/motion-success-2.png'); page.wait_for_timeout(500); page.screenshot(path=f'{OUT}/motion-success-3.png')
+    page.wait_for_timeout(700); page.click('[data-act=copy-code]'); page.wait_for_timeout(40)
+    check('toast springs in', anim(page, '.toast') == 'toast-in')
+    page.click('.modal [data-act=close-modal]'); page.wait_for_timeout(40)
+    check('sheet slides down on close', page.locator('.modal-overlay.closing').count() == 1)
+    page.wait_for_timeout(400); check('closed sheet is removed', page.locator('.modal-overlay').count() == 0)
+    page.click('[data-act=nav][data-page=finances] >> visible=true >> nth=0'); page.wait_for_timeout(900)
+    page.click('text=Аренда за октябрь >> nth=0'); page.wait_for_timeout(1500)
+    page.click('[data-act=nav][data-page=home] >> visible=true >> nth=0'); page.wait_for_timeout(1500)
+    page.emulate_media(reduced_motion='reduce'); page.click('[data-act=nav][data-page=profile] >> visible=true >> nth=0'); page.wait_for_timeout(60)
+    check('reduced motion: no enter animation', anim(page, 'main > :first-child') in ('none', None))
+    ctx.close(); browser.close()
+fails = [n for n, ok in results if not ok]; print(f'{len(results) - len(fails)}/{len(results)} passed'); sys.exit(1 if fails else 0)

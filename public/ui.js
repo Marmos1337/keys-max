@@ -89,7 +89,13 @@ export function rememberStrips(root) {
 export function enhanceUI(root) {
     fitNumericLabels(root);
     // Widths come from data attributes: the CSP forbids inline style attributes in markup.
-    root?.querySelectorAll('[data-w]').forEach(el => el.style.setProperty('--w', Math.max(0, Math.min(100, Number(el.dataset.w) || 0)) + '%'));
+    // Bars grow from zero on first paint, then keep their width on later renders.
+    root?.querySelectorAll('[data-w]').forEach(el => {
+        const w = Math.max(0, Math.min(100, Number(el.dataset.w) || 0)) + '%';
+        if (el.dataset.grown) { el.style.setProperty('--w', w); return; }
+        el.style.setProperty('--w', '0%'); el.dataset.grown = '1';
+        requestAnimationFrame(() => requestAnimationFrame(() => el.style.setProperty('--w', w)));
+    });
     root?.querySelectorAll('[data-ui="segmented"]').forEach(el => {
         const active = el.querySelector('[aria-pressed="true"]');
         el.scrollLeft = stripPositions.get(el.getAttribute('aria-label')) || 0;
