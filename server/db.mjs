@@ -66,6 +66,28 @@ export function openDatabase(directory) {
     if (version !== 3) {
         throw Error('Unsupported database version; do not downgrade.');
     }
+    ensureIdentitySchema(db);
     return db;
     } catch(e){db.close();throw e;}
+}
+
+// Telegram identity is additive and keeps schema_version 3, so the previous
+// release can still open the same database during a code-only rollback.
+export function ensureIdentitySchema(db) {
+    const columns = db.all('PRAGMA table_info(users)').map(c => c.name);
+    db.tx(() => {
+        if (!columns.includes('tg_id')) db.exec('ALTER TABLE users ADD COLUMN tg_id TEXT');
+        if (!columns.includes('tg_bot_enabled')) db.exec('ALTER TABLE users ADD COLUMN tg_bot_enabled INTEGER NOT NULL DEFAULT 0');
+        db.exec(`
+            CREATE UNIQUE INDEX IF NOT EXISTS users_tg_id ON users(tg_id);
+            CREATE TABLE IF NOT EXISTS account_links(
+                hash TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                expires INTEGER NOT NULL,
+                used_at TEXT, used_platform TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS account_links_user ON account_links(user_id);
+        `);
+    });
 }

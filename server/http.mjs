@@ -8,12 +8,14 @@ import { readFile, writeFile, mkdir, stat } from 'node:fs/promises';
 import { readFileSync, createReadStream } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { fail, hash, constantEqual, validateInitData, ensureMaxUser, createSession, sessionUser, tokenFrom, signTicket, verifyTicket } from './auth.mjs';
+import { fail, hash, constantEqual, validateInitData, ensureMaxUser, ensureTelegramUser, createSession, sessionUser, tokenFrom, signTicket, verifyTicket } from './auth.mjs';
 import * as D from './domain.mjs';
 import { storeCover, requireCover, coverUrl } from './covers.mjs';
 import * as V from './validate.mjs';
 import { mergeGuide, GUIDE_LIMIT, GUIDE_TOPICS } from '../public/guide-state.js';
 import { enqueueUpdate, deepLink, botLink } from './bot.mjs';
+import { enqueueTelegramUpdate, telegramBotLink } from './telegram.mjs';
+import { createAccountLink, claimAccountLink, PLATFORMS } from './links.mjs';
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.png': 'image/png', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json; charset=utf-8' };
 const routes = [];
@@ -32,13 +34,27 @@ function requireFiles(db, u, id) { const file = db.get('SELECT * FROM files WHER
     D.recordAccess(db, u, file.record_id);
 else if (file.user_id !== u.id)
     fail(404, 'Файл не найден.'); return file; }
-route('GET', '/api/config', ({ config }) => ({ mode: config.mode, bot_url: botLink(config), operator: config.operator, support: config.support, privacy_url: config.privacyUrl, terms_url: config.termsUrl, version: VERSION }), { auth: false });
+route('GET', '/api/config', ({ config }) => ({ mode: config.mode, bot_url: botLink(config), telegram: { enabled: config.telegram, bot_url: telegramBotLink(config) }, operator: config.operator, support: config.support, privacy_url: config.privacyUrl, terms_url: config.termsUrl, version: VERSION }), { auth: false });
 route('GET', '/api/health', ({ db, config }) => { db.get('SELECT 1'); return { ok: true, version: VERSION, mode: config.mode }; }, { auth: false });
 route('POST', '/api/auth/demo', ({ db, body, res, config }) => { if (config.mode !== 'demo' && config.mode !== 'test')
     fail(404, 'Недоступно.'); const role = V.choice(body.role, ['tenant', 'owner']); const u = db.get('SELECT * FROM users WHERE id=?', 'demo-' + role); if (!u)
     fail(400, 'Демо не инициализировано.'); db.run('UPDATE users SET role=? WHERE id=?', role, u.id); const s = createSession(db, u.id); cookie(res, s.token, config); return { ...s, user: D.safeUser({ ...u, role }) }; }, { auth: false });
 route('POST', '/api/auth/max', ({ db, body, res, config }) => { if (config.mode === 'demo')
     fail(409, 'Деморежим не принимает реальные аккаунты MAX. Для запуска настройте APP_MODE=production.'); const data = validateInitData(body.initData, config.botToken), u = ensureMaxUser(db, data), s = createSession(db, u.id); cookie(res, s.token, config); return { ...s, user: D.safeUser(u), start_param: data.startParam }; }, { auth: false });
+route('POST', '/api/auth/telegram', ({ db, body, res, config }) => { if (config.mode === 'demo')
+    fail(409, 'Деморежим не принимает реальные аккаунты Telegram. Для запуска настройте APP_MODE=production.'); if (!config.tgBotToken)
+    fail(503, 'Вход через Telegram ещё не подключён.'); const data = validateInitData(body.initData, config.tgBotToken, { platform: 'telegram' }), u = db.tx(() => ensureTelegramUser(db, data)), s = createSession(db, u.id); cookie(res, s.token, config); return { ...s, user: D.safeUser(u), start_param: data.startParam }; }, { auth: false });
+// A one-time code from the profile attaches a second messenger to this account.
+route('POST', '/api/account-links', ({ db, user, config }) => { if (user.demo)
+    fail(409, 'В деморежиме мессенджеры не подключаются.'); const link = createAccountLink(db, user); return { ...link, telegram_url: user.tg_id ? '' : telegramBotLink(config, 'link_' + link.code), max_url: user.max_id || !config.botUsername ? '' : botLink(config, 'link_' + link.code) }; }, { mutate: true });
+// Redeems a code from inside the Mini App: the current (new, empty) messenger account
+// hands its identity to the code owner and the session switches to that account.
+// Not idempotency-wrapped on purpose: the response carries a new session token.
+route('POST', '/api/account-links/claim', ({ db, user, body, req, res, config }) => { const platform = V.choice(body.platform, ['max', 'telegram'], 'Мессенджер'); const externalId = user[PLATFORMS[platform].column]; if (!externalId)
+    fail(409, 'Откройте Ключи в мессенджере, который хотите подключить, и введите код там.'); const target = db.tx(() => claimAccountLink(db, body.code, platform, externalId)); if (target.id !== user.id)
+    db.run('DELETE FROM sessions WHERE hash=?', hash(tokenFrom(req))); const s = createSession(db, target.id); cookie(res, s.token, config); return { ...s, user: D.safeUser(target) }; });
+route('POST', '/api/profile/telegram-write', ({ db, user }) => { if (!user.tg_id)
+    fail(409, 'Telegram не подключён к этому аккаунту.'); db.run('UPDATE users SET tg_bot_enabled=1 WHERE id=?', user.id); return D.safeUser(db.get('SELECT * FROM users WHERE id=?', user.id)); }, { mutate: true });
 route('POST', '/api/auth/logout', ({ db, req, res, config }) => { db.run('DELETE FROM sessions WHERE hash=?', hash(tokenFrom(req))); cookie(res, '', config, true); return { ok: true }; });
 route('POST', '/api/auth/revoke', ({ db, user, res, config }) => { db.run('DELETE FROM sessions WHERE user_id=?', user.id); cookie(res, '', config, true); return { ok: true }; }, { mutate: true });
 route('GET', '/api/state', ({ db, user, config }) => D.bootstrap(db, user, config));
@@ -66,8 +82,8 @@ route('POST', '/api/apartments/:id/delete', ctx => {
 
 route('POST', '/api/apartments/:id/leases', ({ db, user, body, params }) => D.createLease(db, user, params.id, body), { mutate: true });
 route('POST','/api/leases/:id/archive-draft',({db,user,params})=>D.archiveDraftLease(db,user,params.id),{mutate:true});
-route('POST', '/api/leases/:id/invite', ({ db, user, params, config }) => { const i = D.createInvite(db, user, params.id); return { ...i, url: botLink(config, 'join_' + i.code) }; }, { mutate: true });
-route('POST', '/api/join', ({ db, user, body, config }) => { if(config.production) fail(409,'Примите приглашение в MAX Bot. Откройте персональную ссылку собственника.'); return D.joinInvite(db,user,body.code); }, { mutate: true });
+route('POST', '/api/leases/:id/invite', ({ db, user, params, config, body }) => { const i = D.createInvite(db, user, params.id); const links = { max: config.botUsername || !config.telegram ? botLink(config, 'join_' + i.code) : '', telegram: config.telegram ? telegramBotLink(config, 'join_' + i.code) : '' }; const preferred = body.platform === 'telegram' && links.telegram ? 'telegram' : links.max ? 'max' : 'telegram'; return { ...i, url: links[preferred], platform: preferred, links }; }, { mutate: true });
+route('POST', '/api/join', ({ db, user, body, config }) => { if(config.production) fail(409,'Примите приглашение в боте Ключей. Откройте персональную ссылку собственника.'); return D.joinInvite(db,user,body.code); }, { mutate: true });
 route('POST', '/api/apartments/:id/units', ({db,user,params,body}) => createUnit(db,user,params.id,body), {mutate:true});
 route('POST', '/api/units/:id', ({db,user,params,body}) => updateUnit(db,user,params.id,body), {mutate:true});
 route('POST', '/api/leases/:id/meters', ({db,user,params,body}) => D.createMeter(db,user,params.id,body), {mutate:true});
@@ -83,7 +99,7 @@ route('GET', '/api/export', ({ db, user, config }) => ({ ...D.bootstrap(db, user
 route('POST', '/api/export/ticket', ({ user, config }) => ({ url: `${config.publicUrl}/api/export/download?ticket=${signTicket(config, user.id, 'export')}`, name: 'keys-export.json', mime: 'application/json' }));
 route('GET', '/api/export/download', ({ db, url, config, res }) => { const d = verifyTicket(config, url.searchParams.get('ticket')); if (d.f !== 'export')
     fail(401, 'Invalid export ticket'); const u = db.get('SELECT * FROM users WHERE id=?', d.u); if (!u)
-    fail(404, 'Пользователь не найден.'); const bytes = Buffer.from(JSON.stringify({ ...D.bootstrap(db, u, config, { coverUrls: false }), notice: 'Учёт приложения; не банковская выписка. Вложения скачиваются отдельно.' }, null, 2)); res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': bytes.length, 'Content-Disposition': 'attachment; filename="keys-export.json"', 'Cache-Control': 'private, no-store' }); res.end(bytes); return null; }, { auth: false });
+    fail(404, 'Пользователь не найден.'); const bytes = Buffer.from(JSON.stringify({ ...D.bootstrap(db, u, config, { coverUrls: false }), notice: 'Учёт приложения; не банковская выписка. Вложения скачиваются отдельно.' }, null, 2)); res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': bytes.length, 'Content-Disposition': 'attachment; filename="keys-export.json"', 'Cache-Control': 'private, no-store', 'Access-Control-Allow-Origin': 'https://web.telegram.org' }); res.end(bytes); return null; }, { auth: false });
 route('POST', '/api/apartment-covers', ({ db, user, body, url, config }) =>
     storeCover(db, user, body, url.searchParams.get('name'), config), { binary: true });
 route('POST', '/api/apartment-covers/:id/ticket', ({ db, user, params, config }) => {
@@ -142,7 +158,10 @@ route('POST', '/api/files', async ({ db, user, body, url, config }) => {
 route('POST', '/api/files/:id/ticket', ({ db, user, params, config }) => { const f = requireFiles(db, user, params.id); return { url: `${config.publicUrl}/api/download/${f.id}?ticket=${signTicket(config, user.id, f.id)}`, name: f.name, mime: f.mime }; });
 route('GET', '/api/download/:id', async ({ db, params, url, config, res }) => { const d = verifyTicket(config, url.searchParams.get('ticket')); if (d.f !== params.id)
     fail(401, 'Ссылка не относится к этому файлу.'); const u = db.get('SELECT * FROM users WHERE id=?', d.u); if (!u)
-    fail(404, 'Файл недоступен.'); const f = requireFiles(db, u, d.f), filePath = path.join(config.dataDir, 'uploads', f.storage_key); await stat(filePath); res.writeHead(200, { 'Content-Type': f.mime, 'Content-Length': f.size, 'Content-Disposition': `attachment; filename="file${path.extname(f.name)}"; filename*=UTF-8''${encodeURIComponent(f.name)}`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" }); createReadStream(filePath).on('error', () => res.destroy()).pipe(res); return null; }, { auth: false });
+    fail(404, 'Файл недоступен.'); const f = requireFiles(db, u, d.f), filePath = path.join(config.dataDir, 'uploads', f.storage_key); await stat(filePath); res.writeHead(200, { 'Content-Type': f.mime, 'Content-Length': f.size, 'Content-Disposition': `attachment; filename="file${path.extname(f.name)}"; filename*=UTF-8''${encodeURIComponent(f.name)}`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Access-Control-Allow-Origin': 'https://web.telegram.org' }); createReadStream(filePath).on('error', () => res.destroy()).pipe(res); return null; }, { auth: false });
+route('POST', '/api/telegram/webhook', ({ db, config, req, body }) => { if (!config.tgWebhookSecret || !constantEqual(req.headers['x-telegram-bot-api-secret-token'] || '', config.tgWebhookSecret))
+    fail(401, 'Unauthorized'); if (!Number.isSafeInteger(body.update_id))
+    fail(400, 'Invalid update'); enqueueTelegramUpdate(db, body); return { ok: true }; }, { auth: false });
 route('POST', '/api/max/webhook', ({ db, config, req, body }) => { if (!config.webhookSecret || !constantEqual(req.headers['x-max-bot-api-secret'] || '', config.webhookSecret))
     fail(401, 'Unauthorized'); if (typeof body.update_type !== 'string')
     fail(400, 'Invalid update'); enqueueUpdate(db, body); return { ok: true }; }, { auth: false });
@@ -154,7 +173,7 @@ export function createServer(db, config) {
         res.setHeader('X-Content-Type-Options', 'nosniff');
         res.setHeader('Referrer-Policy', 'no-referrer');
         res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-        res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://st.max.ru; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' https://max.ru https://*.max.ru https://web.max.ru");
+        res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://st.max.ru https://telegram.org; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'self' https://max.ru https://*.max.ru https://web.max.ru https://web.telegram.org https://*.telegram.org");
         if (config.production)
             res.setHeader('Strict-Transport-Security', 'max-age=31536000');
         try {
@@ -166,7 +185,8 @@ export function createServer(db, config) {
                     return;
                 }
                 const clientIp = config.trustProxy ? String(req.headers['x-forwarded-for'] || req.socket.remoteAddress).split(',').at(-1).trim() : req.socket.remoteAddress;
-                const group = url.pathname.startsWith('/api/auth/') ? 'auth' : url.pathname === '/api/max/webhook' ? 'webhook' : 'api', key = clientIp + ':' + group;
+                const webhook = url.pathname === '/api/max/webhook' || url.pathname === '/api/telegram/webhook';
+                const group = url.pathname.startsWith('/api/auth/') || url.pathname === '/api/account-links/claim' ? 'auth' : webhook ? 'webhook' : 'api', key = clientIp + ':' + group;
                 const now = Date.now(), entry = buckets.get(key) || { start: now, n: 0 };
                 if (now - entry.start > 60000) {
                     entry.start = now;
@@ -186,7 +206,7 @@ export function createServer(db, config) {
                 if (!found)
                     fail(404, 'Маршрут не найден.');
                 const origin = req.headers.origin;
-                if (!['GET', 'HEAD'].includes(req.method) && url.pathname !== '/api/max/webhook') {
+                if (!['GET', 'HEAD'].includes(req.method) && !webhook) {
                     if (origin && origin !== config.publicUrl && !(config.mode !== 'production' && ['http://localhost:3000', 'http://127.0.0.1:3000'].includes(origin)))
                         fail(403, 'Origin не разрешён.');
                     if (req.headers['x-keys-client'] !== 'miniapp')

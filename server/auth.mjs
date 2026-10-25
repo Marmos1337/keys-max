@@ -2,25 +2,39 @@ import {createHmac,createHash,randomBytes,timingSafeEqual,randomUUID} from 'node
 export const hash=x=>createHash('sha256').update(x).digest('hex');
 export function fail(status,message){const e=new Error(message);e.status=status;throw e;}
 export function constantEqual(a,b){const aa=Buffer.from(String(a)),bb=Buffer.from(String(b));return aa.length===bb.length&&timingSafeEqual(aa,bb);}
-// MAX uses WebAppData, NOT Telegram.WebApp. Compare the original decoded strings;
+// MAX and Telegram sign launch data with the same scheme: secret = HMAC_SHA256(key "WebAppData", bot token),
+// hash = HMAC_SHA256(secret, sorted "key=value" lines without hash). Compare the original decoded strings;
 // never reserialize user JSON and never trust initDataUnsafe.
-export function validateInitData(raw,token,{now=Math.floor(Date.now()/1000),maxAge=3600}={}) {
-  if(typeof raw!=='string'||raw.length>16384||!token)fail(401,'Откройте приложение из MAX.');
+const PLATFORM_TEXT={
+  max:{open:'Откройте приложение из MAX.',sign:'Некорректная подпись MAX.',verify:'Не удалось подтвердить вход через MAX.',expired:'Сеанс запуска истёк. Переоткройте приложение в MAX.',user:'Некорректный пользователь MAX.'},
+  telegram:{open:'Откройте приложение из Telegram.',sign:'Некорректная подпись Telegram.',verify:'Не удалось подтвердить вход через Telegram.',expired:'Сеанс запуска истёк. Переоткройте приложение в Telegram.',user:'Некорректный пользователь Telegram.'}
+};
+export function validateInitData(raw,token,{now=Math.floor(Date.now()/1000),maxAge=3600,platform='max'}={}) {
+  const t=PLATFORM_TEXT[platform]||PLATFORM_TEXT.max;
+  if(typeof raw!=='string'||raw.length>16384||!token)fail(401,t.open);
   const p=new URLSearchParams(raw), seen=new Set();
   for(const [k] of p){if(seen.has(k))fail(401,'Повторяющийся параметр авторизации.');seen.add(k);}
   const received=p.get('hash')||'';
-  if(!/^[a-f0-9]{64}$/i.test(received))fail(401,'Некорректная подпись MAX.');
+  if(!/^[a-f0-9]{64}$/i.test(received))fail(401,t.sign);
   const data=[...p.entries()].filter(([k])=>k!=='hash').sort(([a],[b])=>a<b?-1:a>b?1:0).map(([k,v])=>`${k}=${v}`).join('\n');
   const secret=createHmac('sha256','WebAppData').update(token).digest();
   const expected=createHmac('sha256',secret).update(data).digest('hex');
-  if(!constantEqual(expected,received.toLowerCase()))fail(401,'Не удалось подтвердить вход через MAX.');
+  if(!constantEqual(expected,received.toLowerCase()))fail(401,t.verify);
   const date=Number(p.get('auth_date'));
-  if(!Number.isSafeInteger(date)||date>now+30||now-date>maxAge)fail(401,'Сеанс запуска истёк. Переоткройте приложение в MAX.');
-  let u;try{u=JSON.parse(p.get('user')||'null');}catch{fail(401,'Некорректный пользователь MAX.');}
-  if(!u||!Number.isSafeInteger(u.id)||u.id<=0||typeof u.first_name!=='string')fail(401,'Некорректный пользователь MAX.');
-  return {id:String(u.id),name:[u.first_name,u.last_name].filter(Boolean).join(' ').slice(0,120),startParam:p.get('start_param')||''};
+  if(!Number.isSafeInteger(date)||date>now+30||now-date>maxAge)fail(401,t.expired);
+  let u;try{u=JSON.parse(p.get('user')||'null');}catch{fail(401,t.user);}
+  if(!u||!Number.isSafeInteger(u.id)||u.id<=0||typeof u.first_name!=='string'||u.is_bot===true)fail(401,t.user);
+  const out={id:String(u.id),name:[u.first_name,u.last_name].filter(Boolean).join(' ').slice(0,120)||'Пользователь',startParam:p.get('start_param')||''};
+  if(platform==='telegram')out.allowsWrite=u.allows_write_to_pm===true;
+  return out;
 }
 export function ensureMaxUser(db,u){let found=db.get('SELECT * FROM users WHERE max_id=?',u.id);if(!found){const id=randomUUID();db.run('INSERT INTO users(id,max_id,name,created_at) VALUES(?,?,?,?)',id,u.id,u.name,new Date().toISOString());found=db.get('SELECT * FROM users WHERE id=?',id);}return found;}
+export function ensureTelegramUser(db,u){
+  let found=db.get('SELECT * FROM users WHERE tg_id=?',u.id);
+  if(!found){const id=randomUUID();db.run('INSERT INTO users(id,tg_id,name,created_at) VALUES(?,?,?,?)',id,u.id,u.name||'Пользователь Telegram',new Date().toISOString());found=db.get('SELECT * FROM users WHERE id=?',id);}
+  if(u.allowsWrite&&!found.tg_bot_enabled){db.run('UPDATE users SET tg_bot_enabled=1 WHERE id=?',found.id);found=db.get('SELECT * FROM users WHERE id=?',found.id);}
+  return found;
+}
 export function createSession(db,userId){const token=randomBytes(32).toString('base64url'),expires=Date.now()+12*3600_000;db.run('INSERT INTO sessions VALUES(?,?,?,?)',hash(token),userId,expires,new Date().toISOString());return {token,expires};}
 export function tokenFrom(req){const bearer=req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];if(bearer)return bearer;const cookie=req.headers.cookie?.split(';').map(x=>x.trim()).find(x=>x.startsWith('keys_session='));try{return cookie?decodeURIComponent(cookie.slice(13)):'';}catch{return '';} }
 export function sessionUser(db,req){const t=tokenFrom(req);const u=t&&db.get('SELECT u.* FROM users u JOIN sessions s ON s.user_id=u.id WHERE s.hash=? AND s.expires>?',hash(t),Date.now());if(!u)fail(401,'Сессия истекла. Войдите снова.');return u;}

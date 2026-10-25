@@ -62,3 +62,4 @@ export const kindColor = Object.freeze({
     reading: 'amber', document: 'slate', expense: 'green', termination: 'blue', terms: 'blue'
 });
 export const maxLogo = () => '<img class="max-logo" src="/art/max-colored.png" width="26" height="26" alt="" aria-hidden="true">';
+export const platformLogo = name => name === 'telegram' ? '<img class="max-logo" src="/art/telegram.svg" width="26" height="26" alt="" aria-hidden="true">' : maxLogo();

@@ -3,7 +3,8 @@ import { hydrateGuide, syncGuide, recordGuide, showGuidePrompt, guideContent } f
 import { guideTopic } from './guide-state.js';
 import { pageTone, enhanceUI, rememberStrips, fitNumericLabels } from './ui.js';
 import { dueForMonth, tenantIds, isTenant, unitTitle, metersFor, pendingMeters, claimsFor, freeAmount, displayedRule, editableMonth, monthLabel } from './rental-ui.js';
-import { applyTheme, setTheme } from './theme.js';
+import { applyTheme, setTheme, useHostTheme } from './theme.js';
+import { platform, bridgeReady, launchData, hostScheme, onHostSchemeChange, paintHost, haptic, closingConfirmation, syncBackButton, openLink, share, download, requestWriteAccess } from './platform.js';
 import { request, post, setToken, uploadFiles } from './api.js';
 import { coverFields, handleCoverChange, collectCover, releaseCoverPreviews } from './images.js';
 import { welcome, roleView, shell, pageView, model, actionsFor } from './views.js';
@@ -11,14 +12,21 @@ import { uuid, esc, icon, button, notice, field, textarea, select, uploadField, 
 const root = document.querySelector('#root'), modalRoot = document.querySelector('#modal-root'), toastRoot = document.querySelector('#toast-root');
 const state = { config: null, data: null, screen: 'loading', page: 'home', recordId: null, apartmentId: localStorage.getItem('keys.apartment') || '', leaseId: '', scope: 'all', filter: 'all', unitScope: '', aptTab: 'overview', modal: null, depth: 0 };
 let guideVisitTimer;
-let bridgeData = window.WebApp?.initData || new URLSearchParams(location.hash.slice(1)).get('WebAppData') || '', toastTimer, previousFocus = null, loading = false;
+let bridgeData = launchData(), toastTimer, previousFocus = null, loading = false;
 const pendingFiles = new WeakMap();
 function render() { hydrateGuide(state.data?.user); rememberStrips(root); if (state.screen === 'app' && state.data)
     root.innerHTML = shell(state, pageView(state));
 else if (state.screen === 'role')
     root.innerHTML = roleView(state);
 else if (state.screen === 'welcome')
-    root.innerHTML = welcome(state); applyTheme(); enhanceUI(root); }
+    root.innerHTML = welcome(state); applyTheme(); enhanceUI(root); syncBack(); }
+// Telegram header back button: visible when the in-app back action would do something.
+function syncBack() { syncBackButton(!!state.modal || (state.screen === 'app' && state.page !== 'home') || (state.screen === 'role' && !!state.data), hostBack); }
+function hostBack() {
+    if (state.modal) { closeModal(); return; }
+    if (state.screen === 'role') { if (state.data) { state.screen = 'app'; render(); } return; }
+    if (state.screen === 'app' && state.page !== 'home') { if (state.depth > 1) history.back(); else nav('home', null, { replace: true }); }
+}
 // Learning progress follows explicit navigation, not polling or page reloads.
 function updateGuidePrompt() {
     if (state.data?.user && !showGuidePrompt(state.data.user)) root.querySelector('[data-guide-prompt]')?.remove();
@@ -42,13 +50,13 @@ function initializeGuide() {
     hydrateGuide(state.data?.user);
     syncGuide(state.data?.user).then(updateGuidePrompt);
 }
-function toast(message, error = false) { clearTimeout(toastTimer); toastRoot.innerHTML = `<div class="toast ${error ? 'error' : ''}">${icon(error ? 'info' : 'check', 18)}<span>${esc(message)}</span></div>`; toastTimer = setTimeout(() => toastRoot.innerHTML = '', error ? 6500 : 4200); }
+function toast(message, error = false) { haptic(error ? 'error' : 'success'); clearTimeout(toastTimer); toastRoot.innerHTML = `<div class="toast ${error ? 'error' : ''}">${icon(error ? 'info' : 'check', 18)}<span>${esc(message)}</span></div>`; toastTimer = setTimeout(() => toastRoot.innerHTML = '', error ? 6500 : 4200); }
 function routeFromLocation() { const [, app, page, id] = location.pathname.split('/'); if (app === 'app') {
     state.page = page || 'home';
     state.recordId = page === 'record' ? id : null;
 } }
 function nav(page, id = null, { replace = false, keepScope = false, learn = !replace } = {}) { clearTimeout(toastTimer); toastRoot.innerHTML = ''; if(!keepScope)state.unitScope=''; state.page = page; state.recordId = id; state.filter = 'all'; if (page !== 'apartments')
-    state.aptTab = 'overview'; const path = '/app/' + page + (id ? '/' + encodeURIComponent(id) : ''); history[replace ? 'replaceState' : 'pushState']({}, '', path); state.depth++; render(); if (learn) queueGuideVisit(); window.scrollTo({ top: 0, behavior: 'instant' }); }
+    state.aptTab = 'overview'; const path = '/app/' + page + (id ? '/' + encodeURIComponent(id) : ''); history[replace ? 'replaceState' : 'pushState']({}, '', path); state.depth++; if (learn) haptic('select'); render(); if (learn) queueGuideVisit(); window.scrollTo({ top: 0, behavior: 'instant' }); }
 async function reload() { state.data = await request('/state'); if(state.data.user.settings.theme)setTheme(state.data.user.settings.theme); if (state.screen === 'app')
     render(); }
 function modalTone(html) {
@@ -63,12 +71,12 @@ function modalTone(html) {
     return state.data ? pageTone(state) : 'blue';
 }
 function modal(title, html, meta = {}) { releaseCoverPreviews(modalRoot); previousFocus = document.activeElement; state.modal = { title, ...meta }; modalRoot.innerHTML = `<div class="modal-overlay" data-overlay="true"><section class="modal" data-tone="${modalTone(html)}" role="dialog" aria-modal="true" aria-labelledby="dialog-title"${meta.descriptionId ? ` aria-describedby="${esc(meta.descriptionId)}"` : ''} tabindex="-1"><header class="modal-header"><h2 id="dialog-title">${esc(title)}</h2><button class="icon-button" data-act="close-modal" aria-label="Закрыть">${icon('close')}</button></header>${html}</section></div>`; document.body.classList.add('modal-open'); setTimeout(() => modalRoot.querySelector(meta.initialFocus || '.modal')?.focus({preventScroll: true}), 20); try {
-    window.WebApp?.enableClosingConfirmation?.();
+    closingConfirmation(true); syncBack();
 }
 catch { } }
 function closeModal() { if (state.modal?.busy)
     return; releaseCoverPreviews(modalRoot); modalRoot.innerHTML = ''; state.modal = null; document.body.classList.remove('modal-open'); try {
-    window.WebApp?.disableClosingConfirmation?.();
+    closingConfirmation(false); syncBack();
 }
 catch { } if (previousFocus?.isConnected)
     previousFocus.focus(); }
@@ -238,7 +246,11 @@ function actionModal(id, action, claimId='') {
     modal(item.label, formContent('record-action', fields, item.label, `data-id="${id}" data-action="${action}" data-version="${r.version}" data-claim-id="${claimId}"`));
 }
 async function fileDialog(id) { const file = await post('/files/' + id + '/ticket'); modal('Файл готов', `${file.mime.startsWith('image/') ? `<img class="download-preview" src="${esc(file.url)}" alt="Предпросмотр вложения">` : notice(esc(file.name))}<p>Ссылка ограничена по времени. Для скачивания нажмите кнопку ниже.</p><div class="action-row">${button(icon('download', 18) + ' Скачать файл', 'download-ready')}</div>`, { download: file }); }
-function launchDownload(file) { if (window.WebApp?.initData && typeof window.WebApp.downloadFile === 'function') {
+function launchDownload(file) { if (platform.telegram && bridgeData) {
+    download(file).then(r => { if (r === 'unsupported') toast('Скачивание недоступно в этой версии Telegram. Обновите приложение.', true); }).catch(() => toast('Не удалось скачать. Откройте файл заново.', true));
+    return;
+}
+if (window.WebApp?.initData && typeof window.WebApp.downloadFile === 'function') {
     try {
         const result = window.WebApp.downloadFile(file.url, file.name);
         if (result?.catch)
@@ -272,10 +284,10 @@ async function clickAction(el) {
         }
         bridgeData = bridgeData || window.WebApp?.initData || '';
         if (!bridgeData) {
-            modal('Вход через MAX', `<p>Откройте Ключи из бота MAX. Это нужно для безопасного входа в вашу квартиру.</p><div class="action-row">${button('Открыть бота', 'open-bot')}</div>`);
+            modal('Вход через ' + platform.label, `<p>Откройте Ключи из бота ${platform.label}. Это нужно для безопасного входа в вашу квартиру.</p><div class="action-row">${button('Открыть бота', 'open-bot')}</div>`);
             return;
         }
-        const session = await post('/auth/max', { initData: bridgeData });
+        const session = await post(platform.telegram ? '/auth/telegram' : '/auth/max', { initData: bridgeData });
         setToken(session.token);
         state.pendingStart = session.start_param;
         state.data = await request('/state');
@@ -395,8 +407,9 @@ async function clickAction(el) {
     }
     if (act === 'invite') {
         const { l } = chosenLease();
-        const invite = await post('/leases/' + l.id + '/invite');
-        modal('Пригласить арендатора',`<p>Отправьте эту персональную ссылку будущему жильцу. В рабочей версии она сначала открывает MAX-бота: человек видит квартиру и подтверждает присоединение, а затем открывает Ключи.</p><div class="code-box invite-url">${esc(invite.url)}</div>${notice('Одна ссылка — один новый участник, срок 72 часа. Для следующего жильца создайте ещё одну ссылку: предыдущие приглашения продолжат действовать. Не публикуйте ссылки в общем доступе.')}<div class="action-row">${button(icon('copy',18)+' Скопировать ссылку','copy-code')}${button(icon('send',18)+' Поделиться','share-invite','','secondary')}</div>${state.config.mode==='demo'?`<p class="small-note">Локальная демонстрация без реального бота. Код для проверки: ${esc(invite.code)}</p>`:''}`,{invite});
+        const invite = await post('/leases/' + l.id + '/invite', { platform: platform.name });
+        const botName = invite.platform === 'telegram' ? 'Telegram' : 'MAX', otherName = botName === 'MAX' ? 'Telegram' : 'MAX', other = invite.links?.[otherName === 'MAX' ? 'max' : 'telegram'];
+        modal('Пригласить арендатора',`<p>Отправьте эту персональную ссылку будущему жильцу. В рабочей версии она сначала открывает бота Ключей в ${botName}: человек видит квартиру и подтверждает присоединение, а затем открывает Ключи.</p><div class="code-box invite-url">${esc(invite.url)}</div>${other && state.config.mode !== 'demo' ? `<p class="small-note">Если жилец пользуется ${otherName}, отправьте ему эту же ссылку для ${otherName}:<br><span class="invite-url">${esc(other)}</span></p>` : ''}${notice('Одна ссылка — один новый участник, срок 72 часа. Для следующего жильца создайте ещё одну ссылку: предыдущие приглашения продолжат действовать. Не публикуйте ссылки в общем доступе.')}<div class="action-row">${button(icon('copy',18)+' Скопировать ссылку','copy-code')}${button(icon('send',18)+' Поделиться','share-invite','','secondary')}</div>${state.config.mode==='demo'?`<p class="small-note">Локальная демонстрация без реального бота. Код для проверки: ${esc(invite.code)}</p>`:''}`,{invite});
         return;
     }
     if (act === 'copy-code') {
@@ -405,7 +418,10 @@ async function clickAction(el) {
     }
     if (act === 'share-invite') {
         const i = state.modal.invite, text = `Приглашаю в Ключи — всё о нашей квартире.\nОткройте ссылку и подтвердите приглашение в боте:\n${i.url}`;
-        if (window.WebApp?.initData && window.WebApp.shareMaxContent) {
+        if (platform.telegram && bridgeData) {
+            await share('Приглашаю в Ключи — всё о нашей квартире. Откройте ссылку и подтвердите приглашение в боте.', i.url);
+        }
+        else if (window.WebApp?.initData && window.WebApp.shareMaxContent) {
             try {
                 await window.WebApp.shareMaxContent({ text });
             }
@@ -424,6 +440,31 @@ async function clickAction(el) {
         }
         else
             await copyText(text);
+        return;
+    }
+    if (act === 'messengers') {
+        const u = state.data.user, linked = u.platforms || {}, tgOn = !!state.config.telegram?.enabled, maxOn = !!state.config.max_bot_url;
+        const row = (label, on) => `<div class="setting-row messenger-row"><span><b>${label}</b><small>${on ? 'Подключён к этому аккаунту' : 'Не подключён'}</small></span>${on ? icon('check', 18) : ''}</div>`;
+        const canLink = (tgOn && !linked.telegram) || (maxOn && !linked.max);
+        modal('Мессенджеры', `<div class="form-stack messenger-stack"><p>Один аккаунт Ключей можно открывать и в MAX, и в Telegram: квартиры, аренды и история общие. Уведомления приходят в каждый подключённый мессенджер.</p><div class="surface panel">${row('MAX', linked.max)}${tgOn || linked.telegram ? row('Telegram', linked.telegram) : ''}</div>${canLink && !u.demo ? `<p>Чтобы подключить второй мессенджер, получите здесь одноразовый код и введите его в Ключах в другом мессенджере.</p><div class="action-row">${button(icon('link', 18) + ' Получить код', 'link-create')}</div>` : ''}${state.platform?.inHost && !u.demo ? `<p class="small-note">Код получен в другом мессенджере? <button type="button" class="text-link" data-act="link-claim">Ввести код</button></p>` : ''}</div>`);
+        return;
+    }
+    if (act === 'link-create') {
+        const link = await post('/account-links');
+        const target = link.telegram_url ? ['Telegram', link.telegram_url] : link.max_url ? ['MAX', link.max_url] : null;
+        modal('Код для подключения', `<div class="form-stack messenger-stack"><p>Откройте Ключи в ${target ? target[0] : 'другом мессенджере'} и введите код в «Профиль → Мессенджеры → Ввести код». Можно и проще: откройте ссылку на бота и подтвердите подключение.</p><div class="code-box">${esc(link.display)}</div>${notice('Код действует 15 минут и подходит один раз. Никому его не отправляйте: он открывает доступ к вашему аккаунту.', 'amber')}<div class="action-row">${button(icon('copy', 18) + ' Скопировать код', 'copy-link-code')}${target ? button(icon('send', 18) + ' Открыть бота ' + target[0], 'open-link-bot', '', 'secondary') : ''}</div></div>`, { link, linkUrl: target?.[1] || '' });
+        return;
+    }
+    if (act === 'copy-link-code') {
+        await copyText(state.modal.link.display);
+        return;
+    }
+    if (act === 'open-link-bot') {
+        openLink(state.modal.linkUrl);
+        return;
+    }
+    if (act === 'link-claim') {
+        modal('Ввести код подключения', formContent('link-claim', field('Код из профиля Ключей', 'code', 'text', '', 'required maxlength="16" autocomplete="off" autocapitalize="characters" placeholder="ABCDE-23456"') + notice(`Этот ${platform.label} будет подключён к аккаунту, в котором вы получили код. Вводите только свой код.`), 'Подключить'));
         return;
     }
     if (act === 'join') {
@@ -472,7 +513,7 @@ async function clickAction(el) {
         return;
     }
     if (act === 'security') {
-        modal('Безопасность', `<div class="legal-text"><p>Вход в рабочем режиме подтверждается подписью MAX на сервере. Доступ к квартирам и файлам проверяется отдельно для каждого пользователя.</p><p>Приглашение даёт доступ к одной аренде. Смена роли не открывает чужую квартиру. Ссылки на файлы действуют 5 минут.</p>${notice('Файлы хранятся на сервере оператора. Сквозное шифрование и автоматическая проверка файлов антивирусом в этой версии не реализованы.', 'amber')}<p>Можно завершить все сеансы вашего аккаунта. При следующем входе снова откройте приложение в MAX.</p></div>${button('Выйти на всех устройствах', 'revoke', '', 'danger wide')}`);
+        modal('Безопасность', `<div class="legal-text"><p>Вход в рабочем режиме подтверждается подписью ${platform.label} на сервере. Доступ к квартирам и файлам проверяется отдельно для каждого пользователя.</p><p>Приглашение даёт доступ к одной аренде. Смена роли не открывает чужую квартиру. Ссылки на файлы действуют 5 минут.</p>${notice('Файлы хранятся на сервере оператора. Сквозное шифрование и автоматическая проверка файлов антивирусом в этой версии не реализованы.', 'amber')}<p>Можно завершить все сеансы вашего аккаунта. При следующем входе снова откройте приложение в MAX.</p></div>${button('Выйти на всех устройствах', 'revoke', '', 'danger wide')}`);
         return;
     }
     if (act === 'revoke') {
@@ -491,11 +532,7 @@ async function clickAction(el) {
         return;
     }
     if (act === 'open-bot') {
-        const url = state.config.bot_url;
-        if (window.WebApp?.openMaxLink && url.startsWith('https://max.ru/'))
-            window.WebApp.openMaxLink(url);
-        else
-            window.open(url, '_blank', 'noopener');
+        openLink(state.config.bot_url);
         return;
     }
 }
@@ -517,7 +554,7 @@ function applyStart() {
     }
 }
 function showJoin(code='') {
-    modal('Присоединиться к аренде',formContent(state.config.mode==='production'?'join-bot':'join',field('Код из приглашения','code','text',code,'required maxlength="100" autocomplete="off" placeholder="Код от собственника"')+notice('Приглашение открывает историю конкретной аренды. В рабочей версии его нужно подтвердить в MAX-боте, прежде чем открывать приложение.'),state.config.mode==='production'?'Открыть приглашение в боте':'Присоединиться (демо)'));
+    modal('Присоединиться к аренде',formContent(state.config.mode==='production'?'join-bot':'join',field('Код из приглашения','code','text',code,'required maxlength="100" autocomplete="off" placeholder="Код от собственника"')+notice(`Приглашение открывает историю конкретной аренды. В рабочей версии его нужно подтвердить в боте Ключей в ${platform.label}, прежде чем открывать приложение.`),state.config.mode==='production'?'Открыть приглашение в боте':'Присоединиться (демо)'));
 }
 async function copyText(t) { try {
     await navigator.clipboard.writeText(t);
@@ -655,7 +692,18 @@ async function submit(form) {
             if (data.tax_status)
                 settings.tax_status = data.tax_status;
             await post('/profile', { name: data.name, role: u.role, settings }, key);
+            // Telegram bots may write first only with the user's permission.
+            if (platform.telegram && settings.bot && u.platforms?.telegram && !u.tg_bot_enabled && await requestWriteAccess())
+                await post('/profile/telegram-write');
             message = 'Настройки сохранены';
+        }
+        if (type === 'link-claim') {
+            const linked = await post('/account-links/claim', { code: data.code.trim(), platform: platform.name }, key);
+            setToken(linked.token);
+            state.data = await request('/state');
+            initializeGuide();
+            state.screen = state.data.apartments.length ? 'app' : 'role';
+            message = 'Аккаунт подключён: квартиры и история теперь здесь';
         }
         if (type === 'join') {
             result = await post('/join', { code: data.code.trim() }, key);
@@ -666,7 +714,7 @@ async function submit(form) {
         if(type==='archive-draft'){await post('/leases/'+form.dataset.id+'/archive-draft',{},key);state.leaseId='';message='Неиспользованный период отменён';}
         if(type==='join-bot') {
             const url=new URL(state.config.bot_url);url.searchParams.set('start','join_'+data.code.trim());
-            window.location.href=url.href;
+            if(platform.telegram&&bridgeData)openLink(url.href);else window.location.href=url.href;
             if(state.modal)state.modal.busy=false;closeModal();return;
         }
         if(type==='create-unit'||type==='edit-unit') {
@@ -800,7 +848,13 @@ window.addEventListener('popstate', () => { if (state.screen === 'app') {
 window.addEventListener('offline', () => toast('Нет сети. Несохранённые данные остаются в открытой форме.', true));
 window.addEventListener('online', () => { toast('Соединение восстановлено'); syncGuide(state.data?.user).then(updateGuidePrompt); });
 async function boot() { try {
+    await bridgeReady();
+    bridgeData = bridgeData || launchData();
+    if (platform.telegram) useHostTheme(hostScheme, paintHost), onHostSchemeChange(() => applyTheme());
     state.config = await request('/config');
+    state.config.max_bot_url = state.config.bot_url;
+    if (platform.telegram && state.config.telegram?.bot_url) state.config.bot_url = state.config.telegram.bot_url;
+    state.platform = { ...platform, inHost: !!bridgeData };
     const params=new URLSearchParams(location.search);if(params.get('invite'))state.pendingStart='join_'+params.get('invite');else if(params.get('startapp'))state.pendingStart=params.get('startapp');
     if (state.config.mode === 'production' && (bridgeData || window.WebApp?.initData)) {
         state.screen = 'welcome';

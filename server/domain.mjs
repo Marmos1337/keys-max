@@ -7,7 +7,7 @@ export { isMember, memberIds } from './rental.mjs';
 export const nowISO = () => new Date().toISOString();
 export const decode = r => r ? { ...r, payload: JSON.parse(r.payload) } : null;
 export const settings = u => ({ events: true, reminders: true, bot: true, ...JSON.parse(u.settings || '{}') });
-export const safeUser = u => ({ id: u.id, name: u.name, role: u.role, demo: !!u.demo, bot_enabled: !!u.bot_enabled, settings: settings(u) });
+export const safeUser = u => ({ id: u.id, name: u.name, role: u.role, demo: !!u.demo, bot_enabled: !!u.bot_enabled, tg_bot_enabled: !!u.tg_bot_enabled, platforms: { max: !!u.max_id, telegram: !!u.tg_id }, settings: settings(u) });
 export function dateInZone(timezone = 'Europe/Moscow', time = Date.now()) { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(time)); return ['year', 'month', 'day'].map(k => parts.find(p => p.type === k).value).join('-'); }
 export function apartmentAccess(db, u, id, ownerOnly = false) { const a = db.get('SELECT * FROM apartments WHERE id=?', id); if (!a)
     fail(404, 'Квартира не найдена.'); if (a.owner_id === u.id)
@@ -31,8 +31,13 @@ export function pushNotification(db, userId, title, text, recordId = null, dedup
         return;
     const id = randomUUID();
     db.run('INSERT INTO notifications(id,user_id,title,text,record_id,created_at,dedupe,category) VALUES(?,?,?,?,?,?,?,?)', id, userId, title, text, recordId, nowISO(), dedupe, category);
-    if (user.max_id && user.bot_enabled && settings(user).bot && settings(user)[category] !== false) {
-        db.run('INSERT INTO outbox(id,user_id,body,created_at) VALUES(?,?,?,?)', randomUUID(), userId, JSON.stringify({ title, text, recordId, category, ...extra }), nowISO());
+    if (settings(user).bot && settings(user)[category] !== false) {
+        const body = { title, text, recordId, category, ...extra };
+        // One outbox row per messenger, so a failure in one never repeats delivery in the other.
+        if (user.max_id && user.bot_enabled)
+            db.run('INSERT INTO outbox(id,user_id,body,created_at) VALUES(?,?,?,?)', randomUUID(), userId, JSON.stringify(body), nowISO());
+        if (user.tg_id && user.tg_bot_enabled)
+            db.run('INSERT INTO outbox(id,user_id,body,created_at) VALUES(?,?,?,?)', randomUUID(), userId, JSON.stringify({ ...body, channel: 'telegram' }), nowISO());
     }
 }
 export function notifyOther(db, u, ctx, title, recordId, visibility = 'shared', detail = '', extra = {}) {
