@@ -88,6 +88,11 @@ export function ensureIdentitySchema(db) {
                 created_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS account_links_user ON account_links(user_id);
+            CREATE TABLE IF NOT EXISTS bot_state(
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL
+            );
         `);
     });
 }

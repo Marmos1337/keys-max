@@ -2,11 +2,12 @@
 // this module only translates updates in and messages out.
 import { nowISO } from './domain.mjs';
 
-export async function tgRequest(config, method, body = {}) {
+export async function tgRequest(config, method, body = {}, { timeoutMs = 12_000, signal } = {}) {
     // The token is part of the Bot API path by design. Errors never include the URL.
+    const timeout = AbortSignal.timeout(timeoutMs);
     const r = await fetch(`${config.tgApiBase}/bot${config.tgBotToken}/${method}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body), signal: AbortSignal.timeout(12_000),
+        body: JSON.stringify(body), signal: signal ? AbortSignal.any([timeout, signal]) : timeout,
     });
     let result;
     try { result = await r.json(); } catch { throw Error(`Telegram returned HTTP ${r.status}`); }

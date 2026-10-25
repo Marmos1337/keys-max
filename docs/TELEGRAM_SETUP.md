@@ -1,4 +1,4 @@
-# Telegram: Ключи 0.4.0
+# Telegram: Ключи 0.4.x
 
 С версии 0.4.0 Ключи работают в двух мессенджерах из одного кода и одной базы:
 MAX (как раньше) и Telegram. MAX-пользователи ничего не замечают: их вход,
@@ -22,9 +22,23 @@ MAX (как раньше) и Telegram. MAX-пользователи ничего
   secret = HMAC_SHA256(ключ "WebAppData", токен бота), подпись строки
   `key=value` по алфавиту без `hash`, свежесть `auth_date` (1 час), дубли
   параметров. Пользователь Telegram хранится в `users.tg_id`.
-- Бот. Webhook `POST /api/telegram/webhook` с секретом в заголовке
-  `X-Telegram-Bot-Api-Secret-Token` складывает апдейты в ту же очередь
-  `webhook_inbox`, что и MAX. Обработчик общий: приглашения `/start join_…`
+- Бот. С 0.4.1 по умолчанию **long polling** (`KEYS_TG_MODE=polling`): сервер
+  сам забирает обновления `getUpdates` (timeout 50 с). Причина: входящие
+  соединения от серверов Telegram до домашнего сервера не доходят (провайдер),
+  webhook получал «Connection timed out», а исходящие запросы к api.telegram.org
+  работают. Опрос ведёт один процесс: аренда-замок в таблице `bot_state`
+  (продлевается перед каждым запросом, 120 с), второй экземпляр ждёт в standby.
+  Апдейты пишутся в `webhook_inbox` (дубли по `update_id` отсекаются) вместе
+  с новым offset в одной транзакции; offset сохраняется в `bot_state`, после
+  перезапуска опрос продолжается с него (offset старше суток не используется).
+  Ошибки сети — экспоненциальная пауза до 60 с, 429 — `retry_after`, 401 —
+  5 минут. При запуске сервер снимает webhook с `drop_pending_updates=false`,
+  поэтому накопленные апдейты не теряются. Состояние: `GET /api/health` →
+  `telegram` (state, updates, failures, last_ok_s) и строки `tg_poll` в логе
+  (heartbeat раз в 30 минут). Режим `KEYS_TG_MODE=webhook` сохранён: webhook
+  `POST /api/telegram/webhook` с секретом в заголовке
+  `X-Telegram-Bot-Api-Secret-Token`; в режиме polling этот адрес отвечает 404.
+  Оба режима складывают апдейты в ту же очередь `webhook_inbox`, что и MAX. Обработчик общий: приглашения `/start join_…`
   с подтверждением кнопкой, подтверждение посещения, `/help`, `/stop`,
   `/notifications`, подключение аккаунта `/start link_…`. Только личные чаты.
 - Уведомления. Для каждого подключённого мессенджера пользователя создаётся
@@ -52,7 +66,8 @@ MAX (как раньше) и Telegram. MAX-пользователи ничего
    ```
    KEYS_TG_BOT_TOKEN=<токен из BotFather>
    KEYS_TG_BOT_USERNAME=rentkeysbot
-   KEYS_TG_WEBHOOK_SECRET=<32+ символов A-Z a-z 0-9 _ ->
+   KEYS_TG_MODE=polling            # по умолчанию; webhook — только если сервер доступен снаружи
+   KEYS_TG_WEBHOOK_SECRET=<32+ символов, нужен только для webhook>
    ```
 3. Перезапуск и регистрация:
    ```sh
@@ -60,8 +75,9 @@ MAX (как раньше) и Telegram. MAX-пользователи ничего
    docker compose -p keys-prod -f compose.yaml -f compose.prod.yml -f compose.ca.yaml exec app node scripts/telegram.mjs register
    docker compose -p keys-prod -f compose.yaml -f compose.prod.yml -f compose.ca.yaml exec app node scripts/telegram.mjs check
    ```
-   `register` ставит webhook с секретом, кнопку меню «Ключи» (web_app на
-   PUBLIC_URL), команды и описание бота на русском.
+   `register` в режиме polling снимает webhook (в webhook-режиме ставит его с
+   секретом), задаёт кнопку меню «Ключи» (web_app на PUBLIC_URL), команды и
+   описание бота на русском. `check` показывает режим, webhook и состояние опроса.
 4. По желанию в BotFather: `/setuserpic`, а также `/mybots → Bot Settings →
    Configure Mini App` (Main Mini App на тот же URL) — тогда приложение видно
    в профиле бота и работают ссылки `t.me/rentkeysbot?startapp=…`.

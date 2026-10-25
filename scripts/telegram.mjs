@@ -1,5 +1,5 @@
-// Telegram bot setup: `check` reads the bot state, `register` points the webhook,
-// the menu button and the bot texts at this installation. Never prints the token.
+// Telegram bot setup: `check` reads the bot state, `register` sets the update mode
+// (webhook or polling), the menu button and the bot texts. Never prints the token.
 import { makeConfig } from '../server/config.mjs';
 import { tgRequest } from '../server/telegram.mjs';
 
@@ -24,7 +24,13 @@ try {
     if (command === 'check') {
         const hook = await tgRequest(c, 'getWebhookInfo');
         const menu = await tgRequest(c, 'getChatMenuButton', {});
+        console.log('Режим:', c.tgMode === 'polling' ? 'long polling (getUpdates с сервера)' : 'webhook');
         console.log('Webhook:', hook.url || '(не задан)', '| в очереди:', hook.pending_update_count ?? 0, hook.last_error_message ? '| последняя ошибка: ' + hook.last_error_message : '');
+        if (c.tgMode === 'polling' && hook.url) console.log('Внимание: в режиме polling webhook должен быть снят. Сервер снимет его сам при запуске, или выполните register.');
+        try {
+            const h = await (await fetch(`http://127.0.0.1:${c.port}/api/health`, { signal: AbortSignal.timeout(3000) })).json();
+            if (h.telegram) console.log('Сервер:', JSON.stringify(h.telegram));
+        } catch { console.log('Сервер на этом порту не отвечает — состояние опроса не прочитано.'); }
         console.log('Кнопка меню:', menu.type === 'web_app' ? `${menu.text} → ${menu.web_app?.url}` : menu.type);
         console.log('Проверка API завершена. Это ещё не проверка Mini App на устройстве.');
     } else {
@@ -34,7 +40,11 @@ try {
         const health = await fetch(c.publicUrl + '/api/health', { signal: AbortSignal.timeout(10000) });
         if (!health.ok) throw Error('PUBLIC_URL/api/health недоступен. Сначала запустите сервер.');
         if ((await health.json()).mode !== 'production') throw Error('По PUBLIC_URL сейчас открыт не production. Не подключайте бота к демо.');
-        await tgRequest(c, 'setWebhook', { url: c.publicUrl + '/api/telegram/webhook', secret_token: c.tgWebhookSecret, allowed_updates: ['message', 'callback_query', 'my_chat_member'], max_connections: 10 });
+        if (c.tgMode === 'webhook')
+            await tgRequest(c, 'setWebhook', { url: c.publicUrl + '/api/telegram/webhook', secret_token: c.tgWebhookSecret, allowed_updates: ['message', 'callback_query', 'my_chat_member'], max_connections: 10 });
+        else
+            // Polling mode: Telegram keeps undelivered updates; the server picks them up with getUpdates.
+            await tgRequest(c, 'deleteWebhook', { drop_pending_updates: false });
         await tgRequest(c, 'setChatMenuButton', { menu_button: { type: 'web_app', text: 'Ключи', web_app: { url: c.publicUrl + '/' } } });
         for (const language_code of [undefined, 'ru']) {
             const lang = language_code ? { language_code } : {};
@@ -42,7 +52,7 @@ try {
             await tgRequest(c, 'setMyDescription', { description, ...lang });
             await tgRequest(c, 'setMyShortDescription', { short_description: shortDescription, ...lang });
         }
-        console.log('Webhook зарегистрирован:', c.publicUrl + '/api/telegram/webhook');
+        console.log(c.tgMode === 'webhook' ? 'Webhook зарегистрирован: ' + c.publicUrl + '/api/telegram/webhook' : 'Webhook снят: сервер получает обновления через long polling.');
         console.log('Кнопка меню «Ключи» открывает', c.publicUrl + '/');
         console.log('Отправьте боту /start и откройте приложение кнопкой меню.');
     }

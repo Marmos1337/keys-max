@@ -15,6 +15,7 @@ import * as V from './validate.mjs';
 import { mergeGuide, GUIDE_LIMIT, GUIDE_TOPICS } from '../public/guide-state.js';
 import { enqueueUpdate, deepLink, botLink } from './bot.mjs';
 import { enqueueTelegramUpdate, telegramBotLink } from './telegram.mjs';
+import { telegramHealth } from './telegram-poller.mjs';
 import { createAccountLink, claimAccountLink, PLATFORMS } from './links.mjs';
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.png': 'image/png', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json; charset=utf-8' };
@@ -35,7 +36,7 @@ function requireFiles(db, u, id) { const file = db.get('SELECT * FROM files WHER
 else if (file.user_id !== u.id)
     fail(404, 'Файл не найден.'); return file; }
 route('GET', '/api/config', ({ config }) => ({ mode: config.mode, bot_url: botLink(config), telegram: { enabled: config.telegram, bot_url: telegramBotLink(config) }, operator: config.operator, support: config.support, privacy_url: config.privacyUrl, terms_url: config.termsUrl, version: VERSION }), { auth: false });
-route('GET', '/api/health', ({ db, config }) => { db.get('SELECT 1'); return { ok: true, version: VERSION, mode: config.mode }; }, { auth: false });
+route('GET', '/api/health', ({ db, config }) => { db.get('SELECT 1'); return { ok: true, version: VERSION, mode: config.mode, ...(config.telegram ? { telegram: config.tgMode === 'polling' ? (telegramHealth() || { mode: 'polling', state: 'off' }) : { mode: 'webhook' } } : {}) }; }, { auth: false });
 route('POST', '/api/auth/demo', ({ db, body, res, config }) => { if (config.mode !== 'demo' && config.mode !== 'test')
     fail(404, 'Недоступно.'); const role = V.choice(body.role, ['tenant', 'owner']); const u = db.get('SELECT * FROM users WHERE id=?', 'demo-' + role); if (!u)
     fail(400, 'Демо не инициализировано.'); db.run('UPDATE users SET role=? WHERE id=?', role, u.id); const s = createSession(db, u.id); cookie(res, s.token, config); return { ...s, user: D.safeUser({ ...u, role }) }; }, { auth: false });
@@ -159,7 +160,8 @@ route('POST', '/api/files/:id/ticket', ({ db, user, params, config }) => { const
 route('GET', '/api/download/:id', async ({ db, params, url, config, res }) => { const d = verifyTicket(config, url.searchParams.get('ticket')); if (d.f !== params.id)
     fail(401, 'Ссылка не относится к этому файлу.'); const u = db.get('SELECT * FROM users WHERE id=?', d.u); if (!u)
     fail(404, 'Файл недоступен.'); const f = requireFiles(db, u, d.f), filePath = path.join(config.dataDir, 'uploads', f.storage_key); await stat(filePath); res.writeHead(200, { 'Content-Type': f.mime, 'Content-Length': f.size, 'Content-Disposition': `attachment; filename="file${path.extname(f.name)}"; filename*=UTF-8''${encodeURIComponent(f.name)}`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Access-Control-Allow-Origin': 'https://web.telegram.org' }); createReadStream(filePath).on('error', () => res.destroy()).pipe(res); return null; }, { auth: false });
-route('POST', '/api/telegram/webhook', ({ db, config, req, body }) => { if (!config.tgWebhookSecret || !constantEqual(req.headers['x-telegram-bot-api-secret-token'] || '', config.tgWebhookSecret))
+route('POST', '/api/telegram/webhook', ({ db, config, req, body }) => { if (config.tgMode !== 'webhook')
+    fail(404, 'Webhook выключен: бот получает обновления через long polling.'); if (!config.tgWebhookSecret || !constantEqual(req.headers['x-telegram-bot-api-secret-token'] || '', config.tgWebhookSecret))
     fail(401, 'Unauthorized'); if (!Number.isSafeInteger(body.update_id))
     fail(400, 'Invalid update'); enqueueTelegramUpdate(db, body); return { ok: true }; }, { auth: false });
 route('POST', '/api/max/webhook', ({ db, config, req, body }) => { if (!config.webhookSecret || !constantEqual(req.headers['x-max-bot-api-secret'] || '', config.webhookSecret))
