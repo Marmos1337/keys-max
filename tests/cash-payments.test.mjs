@@ -16,7 +16,7 @@ test('Cash: tenant marks a hand-over with date and photo, owner confirms receipt
   assert.match(note,/передал наличными/);assert.match(note,/подтвердите получение/);
   const paid=act(f,claimed,'confirm',f.owner,{claim_id:c.id});
   assert.equal(paid.status,'paid');assert.equal(paid.payload.confirmed,3000000);assert.equal(paid.payload.payments[0].method,'cash');
-  assert.match(f.db.get('SELECT text FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 1',f.tenant.id).text,/получил .* наличными/);
+  assert.match(f.db.get('SELECT text FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 1',f.tenant.id).text,/Получено .* наличными — подтверждение/);
 });
 
 test('Cash: owner disputes with a reason; history keeps it; tenant can mark again',t=>{

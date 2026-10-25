@@ -2,7 +2,7 @@ import { randomUUID, randomBytes } from 'node:crypto';
 import { fail, hash } from './auth.mjs';
 import * as V from './validate.mjs';
 import { bindCover, presentApartment } from './covers.mjs';
-import { isMember, memberIds, unitName, createUnit } from './rental.mjs';
+import { isMember, memberIds, unitName, createUnit, managerRole, managerIds, managerSql, listOwnerInvitesFor } from './rental.mjs';
 import { sealCode, openCode } from './invite-codes.mjs';
 export { isMember, memberIds } from './rental.mjs';
 export const nowISO = () => new Date().toISOString();
@@ -11,13 +11,13 @@ export const settings = u => ({ events: true, reminders: true, bot: true, ...JSO
 export const safeUser = u => ({ id: u.id, name: u.name, role: u.role, demo: !!u.demo, bot_enabled: !!u.bot_enabled, tg_bot_enabled: !!u.tg_bot_enabled, platforms: { max: !!u.max_id, telegram: !!u.tg_id }, settings: settings(u) });
 export function dateInZone(timezone = 'Europe/Moscow', time = Date.now()) { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(time)); return ['year', 'month', 'day'].map(k => parts.find(p => p.type === k).value).join('-'); }
 export function apartmentAccess(db, u, id, ownerOnly = false) { const a = db.get('SELECT * FROM apartments WHERE id=?', id); if (!a)
-    fail(404, 'Квартира не найдена.'); if (a.owner_id === u.id)
-    return { apartment: a, owner: true }; if (ownerOnly || !db.get('SELECT 1 FROM leases l JOIN lease_members lm ON lm.lease_id=l.id WHERE l.apartment_id=? AND lm.user_id=?', id, u.id))
+    fail(404, 'Квартира не найдена.'); const role = managerRole(db, a, u.id); if (role)
+    return { apartment: a, owner: true, role }; if (ownerOnly || !db.get('SELECT 1 FROM leases l JOIN lease_members lm ON lm.lease_id=l.id WHERE l.apartment_id=? AND lm.user_id=?', id, u.id))
     fail(404, 'Квартира не найдена.'); return { apartment: a, owner: false }; }
 export function leaseAccess(db, u, id, { write = false, ownerOnly = false } = {}) { const l = db.get('SELECT * FROM leases WHERE id=?', id); if (!l)
-    fail(404, 'Аренда не найдена.'); const a = db.get('SELECT * FROM apartments WHERE id=?', l.apartment_id), owner = a.owner_id === u.id; if (!owner && (ownerOnly || !isMember(db,u.id,l.id)))
+    fail(404, 'Аренда не найдена.'); const a = db.get('SELECT * FROM apartments WHERE id=?', l.apartment_id), role = managerRole(db, a, u.id), owner = !!role; if (!owner && (ownerOnly || !isMember(db,u.id,l.id)))
     fail(404, 'Аренда не найдена.'); if (write && l.status === 'ended')
-    fail(409, 'Аренда завершена. История доступна только для чтения.'); return { lease: l, apartment: a, owner }; }
+    fail(409, 'Аренда завершена. История доступна только для чтения.'); return { lease: l, apartment: a, owner, role }; }
 export function recordAccess(db, u, id, write = false) { const r = decode(db.get('SELECT * FROM records WHERE id=?', id)); if (!r)
     fail(404, 'Запись не найдена.'); const ctx = leaseAccess(db, u, r.lease_id, { write }); if (!ctx.owner && r.visibility === 'owner')
     fail(404, 'Запись не найдена.'); return { ...ctx, record: r }; }
@@ -43,8 +43,11 @@ export function pushNotification(db, userId, title, text, recordId = null, dedup
 }
 export function notifyOther(db, u, ctx, title, recordId, visibility = 'shared', detail = '', extra = {}) {
     if (visibility === 'owner') return;
-    const targets = new Set([ctx.apartment.owner_id, ...memberIds(db,ctx.lease.id)]);
+    // Every owner of the apartment and every tenant of the lease, each once, never the actor.
+    const targets = new Set([...managerIds(db,ctx.apartment), ...memberIds(db,ctx.lease.id)]);
     targets.delete(u.id);
+    // Scheduled items (monthly bills) come from rules the owners set up: tell the tenants, not every owner.
+    if (ctx.system) for (const id of managerIds(db,ctx.apartment)) targets.delete(id);
     const place = `${ctx.apartment.title} · ${unitName(db,ctx.lease)}`;
     if(!detail&&recordId) {
         const r=decode(db.get('SELECT * FROM records WHERE id=?',recordId)),p=r?.payload||{};
@@ -71,6 +74,7 @@ export function createApartment(db,u,b) {
     if(!Number.isFinite(area)||area<5||area>2000) fail(400,'Площадь: от 5 до 2000 м².');
     const id=randomUUID();
     db.run('INSERT INTO apartments(id,owner_id,title,address,rooms,area,photo,created_at) VALUES(?,?,?,?,?,?,?,?)',id,u.id,title,address,rooms,area,V.choice(b.photo||'living',['living','owner','room']),nowISO());
+    db.run("INSERT OR IGNORE INTO apartment_members(apartment_id,user_id,role,added_by,created_at) VALUES(?,?,'owner',?,?)",id,u.id,u.id,nowISO());
     const mode=V.choice(b.rental_mode||'whole',['whole','rooms']);
     const whole=createUnit(db,u,id,{kind:'whole'});
     const unit=mode==='whole'?whole:createUnit(db,u,id,{kind:'room',title:b.unit_title||'Комната 1'});
@@ -112,7 +116,8 @@ export function updateApartment(db, u, id, b) {
     if (lease) {
         const text = b.title === undefined && b.address === undefined ? 'Изменена обложка квартиры' : 'Обновлена карточка квартиры';
         event(db, u, lease, text);
-        for(const l of db.all("SELECT * FROM leases WHERE apartment_id=? AND status!='ended'",id)) for(const uid of memberIds(db,l.id)) pushNotification(db,uid,text,'Собственник обновил сведения. Условия согласованной аренды не изменены.');
+        for(const l of db.all("SELECT * FROM leases WHERE apartment_id=? AND status!='ended'",id)) for(const uid of memberIds(db,l.id)) pushNotification(db,uid,text,`${u.name}: сведения о квартире обновлены. Условия согласованной аренды не изменены.`);
+        for(const uid of managerIds(db,a)) if(uid!==u.id) pushNotification(db,uid,text,`${u.name}: ${text.toLowerCase()} «${title}».`,null,null,'events',{target:'a_'+id});
     }
     return db.get('SELECT * FROM apartments WHERE id=?', id);
 }
@@ -162,8 +167,9 @@ export function previewInvite(db,u,code,{track=false}={}) {
     const h=hash(String(code).trim()),invite=db.get('SELECT * FROM invites WHERE hash=?',h);
     if(!invite) inviteFail(400,'not_found','Ссылка-приглашение не найдена. Проверьте, что она скопирована целиком, или попросите у собственника новую.');
     const meta=db.get('SELECT * FROM invite_meta WHERE hash=?',h),lease=db.get('SELECT * FROM leases WHERE id=?',invite.lease_id),apartment=db.get('SELECT * FROM apartments WHERE id=?',lease.apartment_id);
-    const ctx={lease,apartment,invite,meta,unit:unitName(db,lease),owner:db.get('SELECT name FROM users WHERE id=?',apartment.owner_id).name};
-    if(apartment.owner_id===u.id) inviteFail(400,'own','Это ваша ссылка-приглашение. Отправьте её жильцу: он откроет её у себя и подтвердит присоединение.',ctx);
+    const inviter=meta?.created_by&&managerRole(db,apartment,meta.created_by)?meta.created_by:apartment.owner_id;
+    const ctx={lease,apartment,invite,meta,unit:unitName(db,lease),owner:db.get('SELECT name FROM users WHERE id=?',inviter).name};
+    if(managerRole(db,apartment,u.id)) inviteFail(400,'own','Это ваша ссылка-приглашение. Отправьте её жильцу: он откроет её у себя и подтвердит присоединение.',ctx);
     if(isMember(db,u.id,lease.id)) inviteFail(409,'member','Вы уже участник этой аренды.',ctx);
     if(lease.status!=='active') inviteFail(409,'closed','Эта аренда уже недоступна для присоединения.',ctx);
     if(meta?.revoked_at) inviteFail(400,'revoked','Собственник отозвал эту ссылку. Попросите у него новую.',ctx);
@@ -186,7 +192,7 @@ export function listInvites(db,u) {
     const now=Date.now(),recent=new Date(now-30*86400000).toISOString();
     return db.all(`SELECT i.hash,i.lease_id,i.expires,i.used_by,m.label,m.created_at,m.opened_at,m.accepted_at,m.revoked_at,m.code_enc IS NOT NULL AS sealed,uu.name AS used_name
         FROM invites i JOIN invite_meta m ON m.hash=i.hash JOIN leases l ON l.id=i.lease_id JOIN apartments a ON a.id=l.apartment_id LEFT JOIN users uu ON uu.id=i.used_by
-        WHERE a.owner_id=? AND l.status!='ended' AND m.replaced_by IS NULL AND m.created_at>? ORDER BY m.created_at DESC LIMIT 100`,u.id,recent)
+        WHERE ${managerSql('a')} AND l.status!='ended' AND m.replaced_by IS NULL AND m.created_at>? ORDER BY m.created_at DESC LIMIT 100`,u.id,recent)
       .map(r=>({id:r.hash,lease_id:r.lease_id,label:r.label,status:inviteStatus(r,now),created_at:r.created_at,expires:new Date(r.expires||0).toISOString(),opened_at:r.opened_at,accepted_at:r.accepted_at,accepted_name:r.used_name||'',shareable:!!r.sealed&&inviteStatus(r,now)!=='accepted'&&inviteStatus(r,now)!=='revoked'&&r.expires>=now}))
       .filter(r=>r.status!=='revoked'||Date.parse(r.created_at)>now-86400000);
 }
@@ -241,16 +247,20 @@ export function joinInvite(db,u,code) {
     notifyOther(db,u,{lease:l,apartment:a,owner:false},'Новый участник аренды',null,'shared',u.name+' присоединился'+(meta?.label?` по ссылке «${meta.label}»`:'')+'. Начисления общие для этой группы, а не отдельная полная сумма каждому.',{target:'l_'+l.id});
     return {apartment_id:a.id,lease_id:l.id};
 }
+// Owners vote as one side: any owner's answer counts for all of them and is stored
+// under the main owner's id. Tenants vote one by one.
+export function voterId(db,apartment,userId) { return managerRole(db,apartment,userId)?apartment.owner_id:userId; }
+export const sameSide=(db,apartment,a,b)=>a===b||(!!managerRole(db,apartment,a)&&!!managerRole(db,apartment,b));
 export function proposalVoters(db,lease,proposer) {
-    const a=db.get('SELECT owner_id FROM apartments WHERE id=?',lease.apartment_id);
-    return [a.owner_id,...memberIds(db,lease.id)].filter(id=>id!==proposer);
+    const a=db.get('SELECT id,owner_id FROM apartments WHERE id=?',lease.apartment_id),side=voterId(db,a,proposer);
+    return [a.owner_id,...memberIds(db,lease.id)].filter(id=>id!==side);
 }
 function approveProposal(db,u,ctx,p) {
-    const required=p.required_approvals||proposalVoters(db,ctx.lease,p.proposer);
-    if(!required.includes(u.id)||p.proposer===u.id) fail(403,'Предложение подтверждают остальные участники.');
+    const required=p.required_approvals||proposalVoters(db,ctx.lease,p.proposer),voter=voterId(db,ctx.apartment,u.id);
+    if(!required.includes(voter)||sameSide(db,ctx.apartment,p.proposer,u.id)) fail(403,'Предложение подтверждают остальные участники.');
     const accepted=p.accepted_by||[];
-    if(accepted.includes(u.id)) fail(409,'Вы уже подтвердили предложение. Ожидается ответ остальных.');
-    p.required_approvals=required; p.accepted_by=[...accepted,u.id];
+    if(accepted.includes(voter)) fail(409,'Это предложение уже подтверждено с вашей стороны. Ожидается ответ остальных.');
+    p.required_approvals=required; p.accepted_by=[...accepted,voter];
     return required.every(id=>p.accepted_by.includes(id));
 }
 export function createRecord(db, u, b, config) {
@@ -330,7 +340,7 @@ export function actionRecord(db, u, id, b) {
         else if (act === 'confirm') {
             tenant();
             inStatus(['resolved']);
-            if(r.created_by!==ctx.apartment.owner_id && r.created_by!==u.id) fail(403,'Результат подтверждает автор заявки.');
+            if(!managerRole(db,ctx.apartment,r.created_by) && r.created_by!==u.id) fail(403,'Результат подтверждает автор заявки.');
             status = 'closed';
         }
         else if (act === 'reopen') {
@@ -371,7 +381,7 @@ export function actionRecord(db, u, id, b) {
     else if (r.kind === 'visit') {
         if (act === 'accept') {
             inStatus(['proposed', 'counter']);
-            if (p.proposer === u.id)
+            if (sameSide(db, ctx.apartment, p.proposer, u.id))
                 fail(403, 'Предложенное время подтверждает другая сторона.');
             if (Date.parse(p.start) < Date.now())
                 fail(409, 'Предложенное время уже прошло. Предложите новое.');
@@ -425,11 +435,11 @@ export function actionRecord(db, u, id, b) {
                 if(p.confirmed+claim.amount>p.amount) fail(409,'Сумма превышает остаток начисления.');
                 p.confirmed+=claim.amount;
                 p.payments=[...p.payments,{...claim,confirmed_by:u.id,confirmed_at:nowISO()}];
-                label=`Собственник получил ${formatMoney(claim.amount)} ${how(claim.method||'transfer')}`;
+                label=`Получено ${formatMoney(claim.amount)} ${how(claim.method||'transfer')} — подтверждение: ${u.name}`;
             } else {
                 p.rejection=V.text(b.note,'Что не так',1000);
                 p.disputes=[...(p.disputes||[]),{...claim,reason:p.rejection,by:u.id,disputed_at:nowISO()}];
-                label=`Собственник не подтвердил ${formatMoney(claim.amount)} ${how(claim.method||'transfer')}: ${p.rejection}`;
+                label=`Не подтверждено ${formatMoney(claim.amount)} ${how(claim.method||'transfer')}: ${p.rejection} — ${u.name}`;
             }
             p.claims=p.claims.filter(c=>c.id!==claim.id);
         } else if(act==='record_payment') {
@@ -440,7 +450,7 @@ export function actionRecord(db, u, id, b) {
             const m=method();
             p.confirmed+=amount;
             p.payments=[...p.payments,{id:randomUUID(),amount,method:m,paid_on:paidOn(),user_id:payer,note:V.text(b.note,'Комментарий',1000,true),files:fileIds,confirmed_by:u.id,confirmed_at:nowISO(),source:'owner_manual'}];
-            label=`Собственник записал получение ${formatMoney(amount)} ${how(m)}`;
+            label=`Записано получение ${formatMoney(amount)} ${how(m)} — ${u.name}`;
         } else deny();
         p.claim=p.claims[0]||null; // Backward-compatible field for older clients; authoritative list is claims.
         status=p.claims.length?'claimed':p.confirmed===p.amount?'paid':p.confirmed?'partial':'pending';
@@ -469,7 +479,7 @@ export function actionRecord(db, u, id, b) {
     else if (r.kind === 'termination') {
         if (act === 'accept') {
             inStatus(['proposed']);
-            if (p.proposer === u.id)
+            if (sameSide(db, ctx.apartment, p.proposer, u.id))
                 fail(403, 'Запрос подтверждает другая сторона.');
             if(approveProposal(db,u,ctx,p)) { status='accepted'; db.run("UPDATE leases SET status='ending' WHERE id=?",ctx.lease.id);
                 for(const bill of db.all("SELECT * FROM records WHERE lease_id=? AND kind='charge' AND status='pending'",ctx.lease.id).map(decode)) {
@@ -485,14 +495,14 @@ export function actionRecord(db, u, id, b) {
         }
         else if (act === 'reject') {
             inStatus(['proposed']);
-            if (p.proposer === u.id)
+            if (sameSide(db, ctx.apartment, p.proposer, u.id))
                 deny();
             status = 'rejected';
             p.reason = V.text(b.note, 'Комментарий', 1000);
         }
         else if (act === 'cancel') {
             inStatus(['proposed']);
-            if (p.proposer !== u.id)
+            if (!sameSide(db, ctx.apartment, p.proposer, u.id))
                 deny();
             status = 'cancelled';
         }
@@ -640,13 +650,17 @@ function recordReading(db,u,ctx,p,files,config) {
     }
     return r;
 }
+// «Собственники»: the main owner first, then co-owners, with the date they joined.
+export function apartmentOwners(db,a) {
+    return managerIds(db,a).map(id=>{const m=db.get('SELECT created_at FROM apartment_members WHERE apartment_id=? AND user_id=?',a.id,id);return {id,name:db.get('SELECT name FROM users WHERE id=?',id)?.name||'Собственник',role:id===a.owner_id?'owner':'co_owner',since:m?.created_at||a.created_at};});
+}
 export function bootstrap(db,u,config,{coverUrls=true}={}) {
-    const access=`(a.owner_id=? OR EXISTS(SELECT 1 FROM lease_members lm WHERE lm.lease_id=l.id AND lm.user_id=?))`;
-    const apartments=db.all(`SELECT DISTINCT a.* FROM apartments a LEFT JOIN leases l ON l.apartment_id=a.id WHERE ${access} ORDER BY a.created_at`,u.id,u.id).map(a=>presentApartment(db,u,a,config,coverUrls));
+    const access=`(${managerSql('a')} OR EXISTS(SELECT 1 FROM lease_members lm WHERE lm.lease_id=l.id AND lm.user_id=?))`;
+    const apartments=db.all(`SELECT DISTINCT a.* FROM apartments a LEFT JOIN leases l ON l.apartment_id=a.id WHERE ${access} ORDER BY a.created_at`,u.id,u.id).map(a=>({...presentApartment(db,u,a,config,coverUrls),my_role:managerRole(db,a,u.id)||'tenant',owners:apartmentOwners(db,a)}));
     const leases=db.all(`SELECT l.* FROM leases l JOIN apartments a ON a.id=l.apartment_id WHERE ${access} ORDER BY l.created_at DESC`,u.id,u.id).map(l=>({...l,tenant_ids:memberIds(db,l.id),unit_title:unitName(db,l)}));
-    const recordAccessSql=`(a.owner_id=? OR (r.visibility='shared' AND EXISTS(SELECT 1 FROM lease_members lm WHERE lm.lease_id=r.lease_id AND lm.user_id=?)))`;
+    const recordAccessSql=`(${managerSql('a')} OR (r.visibility='shared' AND EXISTS(SELECT 1 FROM lease_members lm WHERE lm.lease_id=r.lease_id AND lm.user_id=?)))`;
     const records=db.all(`SELECT r.* FROM records r JOIN apartments a ON a.id=r.apartment_id WHERE ${recordAccessSql} ORDER BY r.created_at DESC`,u.id,u.id).map(decode);
-    const events=db.all(`SELECT e.*,u.name AS author FROM events e JOIN users u ON u.id=e.user_id JOIN apartments a ON a.id=e.apartment_id WHERE a.owner_id=? OR (e.visibility='shared' AND EXISTS(SELECT 1 FROM lease_members lm WHERE lm.lease_id=e.lease_id AND lm.user_id=?)) ORDER BY e.created_at DESC LIMIT 1000`,u.id,u.id);
+    const events=db.all(`SELECT e.*,u.name AS author FROM events e JOIN users u ON u.id=e.user_id JOIN apartments a ON a.id=e.apartment_id WHERE ${managerSql('a')} OR (e.visibility='shared' AND EXISTS(SELECT 1 FROM lease_members lm WHERE lm.lease_id=e.lease_id AND lm.user_id=?)) ORDER BY e.created_at DESC LIMIT 1000`,u.id,u.id);
     for(const l of leases) {
         const future=records.filter(r=>r.lease_id===l.id&&r.kind==='terms'&&r.status==='accepted'&&r.payload.effective_month>dateInZone(config.timezone).slice(0,7)).sort((a,b)=>a.payload.effective_month.localeCompare(b.payload.effective_month))[0];
         l.current_rent=future?future.payload.previous_rent:l.rent;
@@ -654,14 +668,14 @@ export function bootstrap(db,u,config,{coverUrls=true}={}) {
         l.current_due_day=future?(future.payload.previous_due_day||l.due_day):l.due_day;
     }
     const notifications=db.all('SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 200',u.id);
-    const ids=new Set([u.id,...leases.flatMap(l=>l.tenant_ids),...apartments.map(a=>a.owner_id)]);
+    const ids=new Set([u.id,...leases.flatMap(l=>l.tenant_ids),...apartments.flatMap(a=>a.owners.map(o=>o.id))]);
     const people=[...ids].map(id=>db.get('SELECT id,name FROM users WHERE id=?',id));
-    const units=db.all(`SELECT ru.* FROM rental_units ru JOIN apartments a ON a.id=ru.apartment_id WHERE a.owner_id=? OR EXISTS(SELECT 1 FROM leases l JOIN lease_members lm ON lm.lease_id=l.id WHERE l.unit_id=ru.id AND lm.user_id=?) ORDER BY ru.created_at,ru.title`,u.id,u.id);
+    const units=db.all(`SELECT ru.* FROM rental_units ru JOIN apartments a ON a.id=ru.apartment_id WHERE ${managerSql('a')} OR EXISTS(SELECT 1 FROM leases l JOIN lease_members lm ON lm.lease_id=l.id WHERE l.unit_id=ru.id AND lm.user_id=?) ORDER BY ru.created_at,ru.title`,u.id,u.id);
     const meterMap=new Map();for(const l of leases) for(const m of visibleMeters(db,l,{activeOnly:false})) meterMap.set(m.id,m);
     const meters=[...meterMap.values()];
     const meter_history=[];
     for(const m of meters) {
-        const own=apartments.some(a=>a.id===m.apartment_id&&a.owner_id===u.id);
+        const own=apartments.some(a=>a.id===m.apartment_id&&a.my_role!=='tenant');
         const allowed=leases.filter(l=>l.id===m.lease_id||(m.scope==='apartment'&&l.apartment_id===m.apartment_id));
         for(const v of db.all('SELECT * FROM meter_values WHERE meter_id=? ORDER BY period DESC',m.id)) {
             if(own||allowed.some(l=>v.period>=l.start.slice(0,7)&&v.period<=l.end.slice(0,7))) meter_history.push({...v,record_id:records.some(r=>r.id===v.record_id)?v.record_id:null});
@@ -674,7 +688,7 @@ export function bootstrap(db,u,config,{coverUrls=true}={}) {
     const comments=db.all(`SELECT c.*,u.name AS author FROM comments c JOIN users u ON u.id=c.user_id JOIN records r ON r.id=c.record_id JOIN apartments a ON a.id=r.apartment_id WHERE ${recordAccessSql} ORDER BY c.created_at`,u.id,u.id);
     const files=db.all(`SELECT f.id,f.record_id,f.name,f.mime,f.size FROM files f JOIN records r ON r.id=f.record_id JOIN apartments a ON a.id=r.apartment_id WHERE ${recordAccessSql}`,u.id,u.id);
     const recurring_rules=db.all(`SELECT rr.* FROM recurring_rules rr JOIN leases l ON l.id=rr.lease_id JOIN apartments a ON a.id=l.apartment_id WHERE ${access} AND rr.state!='deleted' ORDER BY rr.created_at`,u.id,u.id).map(rr=>({...rr,next_editable_month:nextEditableMonth(db,rr,dateInZone(config.timezone).slice(0,7)),revisions:db.all('SELECT * FROM recurring_revisions WHERE rule_id=? ORDER BY from_month',rr.id)}));
-    return {user:safeUser(u),apartments,units,leases,records,events,notifications,people,meters,meter_history,recurring_rules,comments,files,invites:apartments.some(a=>a.owner_id===u.id)?listInvites(db,u):[],members:memberDates(db,leases),server_time:nowISO(),business_date:dateInZone(config.timezone),timezone:config.timezone};
+    return {user:safeUser(u),apartments,units,leases,records,events,notifications,people,meters,meter_history,recurring_rules,comments,files,invites:apartments.some(a=>a.my_role!=='tenant')?listInvites(db,u):[],owner_invites:listOwnerInvitesFor(db,u),members:memberDates(db,leases),server_time:nowISO(),business_date:dateInZone(config.timezone),timezone:config.timezone};
 }
 
 export function validMonth(value,label='Месяц') {
@@ -780,15 +794,15 @@ export function generateRecurring(db,config,time=Date.now()) {
                 if(due<l.start) due=l.start; // First month: no deadline before the lease itself.
                 if(due>end||due>dateInZone(config.timezone,time+r.advance_days*86400000)||ruleCharge(db,base,month)) continue;
                 const dedupe=base.legacy?`charge:${l.id}:${month}`:`recurring:${base.id}:${month}`;
-                insertRecord(db,user,{lease:l,apartment,owner:true},'charge','pending',r.title+' за '+monthText(month),{amount:r.amount,confirmed:0,due,period:month,payments:[],claims:[],claim:null,rule_id:base.id},'shared',dedupe);
+                insertRecord(db,user,{lease:l,apartment,owner:true,system:true},'charge','pending',r.title+' за '+monthText(month),{amount:r.amount,confirmed:0,due,period:month,payments:[],claims:[],claim:null,rule_id:base.id},'shared',dedupe);
             }
         }
         if(l.start>today||l.end<today) continue;
         const meterDue=Number(dueDate(ym,l.meter_day).slice(8));
         const pending=visibleMeters(db,l).some(m=>!db.get('SELECT 1 FROM meter_values WHERE meter_id=? AND period=?',m.id,ym));
-        if(l.meters_enabled&&pending&&[meterDue-3,meterDue].includes(day)) for(const uid of [l.owner_id,...memberIds(db,l.id)]) pushNotification(db,uid,'Пора передать показания',`${l.apartment_title} · ${unitName(db,l)}\nЗа ${monthText(ym)}, до ${humanDate(dueDate(ym,l.meter_day))}.`,null,`meter:${l.id}:${uid}:${today}`,'reminders',{target:'m_'+l.id});
+        if(l.meters_enabled&&pending&&[meterDue-3,meterDue].includes(day)) for(const uid of [...managerIds(db,l.apartment_id),...memberIds(db,l.id)]) pushNotification(db,uid,'Пора передать показания',`${l.apartment_title} · ${unitName(db,l)}\nЗа ${monthText(ym)}, до ${humanDate(dueDate(ym,l.meter_day))}.`,null,`meter:${l.id}:${uid}:${today}`,'reminders',{target:'m_'+l.id});
         const endDays=Math.ceil((Date.parse(end)-Date.parse(today))/86400000);
-        if([30,7,1,0].includes(endDays)) for(const uid of [l.owner_id,...memberIds(db,l.id)]) pushNotification(db,uid,'Срок аренды заканчивается',`${l.apartment_title} · ${unitName(db,l)}\nДата окончания: ${humanDate(end)}.`,null,`lease-end:${l.id}:${uid}:${today}`,'reminders',{target:'l_'+l.id});
+        if([30,7,1,0].includes(endDays)) for(const uid of [...managerIds(db,l.apartment_id),...memberIds(db,l.id)]) pushNotification(db,uid,'Срок аренды заканчивается',`${l.apartment_title} · ${unitName(db,l)}\nДата окончания: ${humanDate(end)}.`,null,`lease-end:${l.id}:${uid}:${today}`,'reminders',{target:'l_'+l.id});
     }
     for(const r of db.all("SELECT * FROM records WHERE kind IN ('charge','visit') AND status NOT IN ('paid','cancelled','completed')").map(decode)) {
         const l=db.get('SELECT * FROM leases WHERE id=?',r.lease_id);if(l.status==='ended') continue;
@@ -800,7 +814,7 @@ export function generateRecurring(db,config,time=Date.now()) {
             detail=`${r.title}\nОсталось подтвердить: ${formatMoney(r.payload.amount-r.payload.confirmed)}. Срок: ${humanDate(r.payload.due)}.`;
         }
         if(r.kind==='visit'&&r.status==='accepted') {const diff=Date.parse(r.payload.start)-time;remind=diff>0&&diff<=24*3600000;title='Скоро согласованное посещение';detail=`${r.payload.reason}\n${new Date(r.payload.start).toLocaleString('ru-RU',{timeZone:config.timezone})} (${config.timezone})`;}
-        if(remind) for(const uid of [a.owner_id,...memberIds(db,l.id)]) pushNotification(db,uid,title,`${detail}\n${a.title} · ${unitName(db,l)}`,r.id,`due:${r.id}:${r.version}:${uid}:${today}`,'reminders');
+        if(remind) for(const uid of [...managerIds(db,a),...memberIds(db,l.id)]) pushNotification(db,uid,title,`${detail}\n${a.title} · ${unitName(db,l)}`,r.id,`due:${r.id}:${r.version}:${uid}:${today}`,'reminders');
     }
 }
 const formatMoney=n=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(n/100);

@@ -2,7 +2,8 @@ import {createHash,randomUUID} from 'node:crypto';
 import {ensureMaxUser,ensureTelegramUser} from './auth.mjs';
 import {previewAccountLink,claimAccountLink,PLATFORMS} from './links.mjs';
 import {tgRequest,toTelegram,telegramAppUrl,normalizeTelegramUpdate,parseCommand} from './telegram.mjs';
-import {actionRecord,recordAccess,leaseAccess,previewInvite,joinInvite,settings,nowISO} from './domain.mjs';
+import {actionRecord,recordAccess,leaseAccess,apartmentAccess,previewInvite,joinInvite,settings,nowISO,voterId,sameSide} from './domain.mjs';
+import {previewOwnerInvite,joinOwnerInvite} from './owners.mjs';
 const root=c=>(c.deepLinkBase||'https://max.ru').replace(/\/$/,'');
 export function deepLink(c,payload='',channel='max') {
   if(channel==='telegram') return telegramAppUrl(c,payload);
@@ -11,7 +12,7 @@ export function deepLink(c,payload='',channel='max') {
   return c.publicUrl;
 }
 export function botLink(c,payload='') {
-  return c.botUsername?`${root(c)}/${encodeURIComponent(c.botUsername)}${payload?'?start='+encodeURIComponent(payload):''}`:c.publicUrl+(payload.startsWith('join_')?'?invite='+encodeURIComponent(payload.slice(5)):'');
+  return c.botUsername?`${root(c)}/${encodeURIComponent(c.botUsername)}${payload?'?start='+encodeURIComponent(payload):''}`:c.publicUrl+(payload.startsWith('join_')?'?invite='+encodeURIComponent(payload.slice(5)):payload.startsWith('own_')?'?startapp='+encodeURIComponent(payload):'');
 }
 export async function maxRequest(config,method,route,body) {
   const r=await fetch(config.apiBase+route,{method,headers:{Authorization:config.botToken,...(body?{'Content-Type':'application/json'}:{})},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(12_000)});
@@ -42,16 +43,31 @@ export function makeMessage(db,config,userId,b) {
       else {title='Приглашение недоступно';text=e.status?e.message:'Оно уже принято, отозвано или истекло. Новое приглашение можно получить у собственника.';}
     }
   }
+  if(b.ownerInviteCode) {
+    try {
+      previewOwnerInvite(db,u,b.ownerInviteCode);
+      buttons=[[{type:'callback',text:'Стать совладельцем',payload:'own|'+b.ownerInviteCode}]];
+      return {format:'html',text:`<b>${limitedHtml(title,650)}</b>\n\n${limitedHtml(text,3200)}`,attachments:[{type:'inline_keyboard',payload:{buttons}}]};
+    } catch(e) {
+      if(e.reason==='member'&&e.apartment_id){title='Вы уже совладелец';text='Квартира уже есть в ваших Ключах.';target='a_'+e.apartment_id;}
+      else {title='Приглашение недоступно';text=e.status?e.message:'Ссылка больше не действует. Попросите у владельца новую.';}
+    }
+  }
   if(b.recordId) {
     try {
-      const {record:r,owner}=recordAccess(db,u,b.recordId);
+      const {record:r,owner,apartment}=recordAccess(db,u,b.recordId);
       target=(b.discussion?'c_':'r_')+r.id;
       cta=b.discussion?'Ответить в обсуждении':({ticket:'Открыть заявку',charge:owner?'Проверить платёж':'Открыть платёж',visit:'Согласовать посещение',reading:'Посмотреть показания',purchase:'Открыть покупку',document:'Открыть документ',terms:'Посмотреть условия',termination:'Обсудить завершение'})[r.kind]||'Открыть запись';
       const accepted=r.payload.accepted_by||[],required=r.payload.required_approvals;
-      if(r.kind==='visit'&&['proposed','counter'].includes(r.status)&&r.payload.proposer!==u.id&&!accepted.includes(u.id)&&(!required||required.includes(u.id))) {
+      const voter=voterId(db,apartment,u.id);
+      if(r.kind==='visit'&&['proposed','counter'].includes(r.status)&&!sameSide(db,apartment,r.payload.proposer,u.id)&&!accepted.includes(voter)&&(!required||required.includes(voter))) {
         buttons.push([{type:'callback',text:'Подтвердить время',payload:`visit|${r.id}|${r.version}|accept`},link('Предложить другое',open('r_'+r.id))]);
       }
     } catch { title='Событие в Ключах';text='Доступ к этой записи изменился. Проверьте доступные вам аренды.';target='';cta='Открыть Ключи'; }
+  }
+  if(target.startsWith('a_')) {
+    try {apartmentAccess(db,u,target.slice(2));cta='Открыть квартиру';}
+    catch {target='';text='Доступ к квартире изменился.';}
   }
   if(target.startsWith('l_')||target.startsWith('m_')||target.startsWith('j_')) {
     try {leaseAccess(db,u,target.slice(2));cta=target.startsWith('m_')?'Открыть счётчики':target.startsWith('j_')?'Открыть Ключи':'Открыть аренду';}
@@ -88,7 +104,7 @@ function callbackAction(db,fn) {
 const setBot=(db,u,channel,on)=>db.run(`UPDATE users SET ${PLATFORMS[channel].bot}=? WHERE id=?`,on?1:0,u.id);
 function welcomeReply(db,u,channel) {
   const tenant=db.get("SELECT l.id FROM lease_members lm JOIN leases l ON l.id=lm.lease_id WHERE lm.user_id=? AND l.status!='ended' ORDER BY lm.joined_at DESC LIMIT 1",u.id);
-  const owner=db.get('SELECT 1 FROM apartments WHERE owner_id=?',u.id);
+  const owner=db.get('SELECT 1 FROM apartment_members WHERE user_id=?',u.id);
   const text=tenant||owner?'Платежи, показания счётчиков, заявки и документы — в одном месте. Уведомления о новых событиях приходят сюда.\n\n/help — помощь':'Платежи, показания счётчиков, заявки и документы по квартире — в одном месте, для собственника и жильцов.\n\nЖилец? Откройте ссылку-приглашение от собственника: бот покажет квартиру и попросит подтвердить.\nСобственник? Откройте Ключи, добавьте квартиру и отправьте жильцам ссылки.\n\n/help — помощь';
   reply(db,u.id,'Ключи — аренда без хаоса',text,null,tenant&&!owner?{target:'j_'+tenant.id}:{},channel);
 }
@@ -100,8 +116,21 @@ function linkReply(db,u,code,channel) {
     else reply(db,u.id,`Подключить ${name}?`,`Код из профиля Ключей привяжет этот ${name} к аккаунту «${p.name}». Квартиры, аренды и история станут доступны здесь.\n\nПодтверждайте, только если код получили вы сами.`,null,{linkCode:code.toUpperCase().replace(/-/g,'')},channel);
   } catch(e) {if(!e.status)throw e;reply(db,u.id,'Не удалось подключить',e.message,null,{},channel);}
 }
+function ownerInviteReply(db,u,code,channel='max',config={}) {
+  try {
+    const {apartment,inviter,owners}=previewOwnerInvite(db,u,code,{track:true});
+    const legal=config.termsUrl&&config.privacyUrl?`\n\nНажимая «Стать совладельцем», вы соглашаетесь с условиями (${config.termsUrl}) и политикой конфиденциальности (${config.privacyUrl}).`:'';
+    reply(db,u.id,'Приглашение стать совладельцем',`${inviter} приглашает вас вести квартиру вместе:\n${apartment.title}\nСобственники сейчас: ${owners.join(', ')}.\n\nСовладелец видит и меняет всё по этой квартире: аренду, жильцов, счётчики, платежи и заявки. Уведомления будут приходить и вам. Принимайте, только если знаете отправителя.${legal}`,null,{ownerInviteCode:code},channel);
+  } catch(e) {
+    if(!e.status)throw e;
+    if(e.reason==='member') reply(db,u.id,'Вы уже совладелец','Квартира уже есть в ваших Ключах.',null,{target:'a_'+e.apartment_id},channel);
+    else if(e.reason==='own') reply(db,u.id,'Это ваша ссылка',e.message+'\n\nОтправить её можно в Ключах: Квартира → Совладельцы.',null,{},channel);
+    else reply(db,u.id,'Ссылка не сработала',e.message,null,{},channel);
+  }
+}
 function startPayload(db,u,payload,channel,config) {
-  if(payload.startsWith('join_')) inviteReply(db,u,payload.slice(5),channel,config);
+  if(payload.startsWith('own_')) ownerInviteReply(db,u,payload.slice(4),channel,config);
+  else if(payload.startsWith('join_')) inviteReply(db,u,payload.slice(5),channel,config);
   else if(payload.startsWith('link_')) linkReply(db,u,payload.slice(5),channel);
   else welcomeReply(db,u,channel);
 }
@@ -119,6 +148,16 @@ function callbackReply(db,u,data,answerId,channel) {
         if(e.reason!=='member') throw e;
         answer='Приглашение уже принято. Квартира — в Ключах.';title='Вы уже в этой аренде';extra.target='j_'+e.lease_id;
       }
+    } else if(parts.length===2&&parts[0]==='own') {
+      try {
+        const joined=callbackAction(db,()=>joinOwnerInvite(db,u,parts[1]));
+        setBot(db,u,channel,true);
+        const apt=db.get('SELECT title FROM apartments WHERE id=?',joined.apartment_id);
+        answer=`Вы совладелец «${apt.title}». Откройте Ключи: квартира уже в разделе «Квартиры», уведомления будут приходить сюда.`;title='Готово, вы совладелец';extra.target='a_'+joined.apartment_id;
+      } catch(e) {
+        if(e.reason!=='member') throw e;
+        answer='Вы уже совладелец этой квартиры.';title='Вы уже совладелец';extra.target='a_'+e.apartment_id;
+      }
     } else if(parts.length===4&&parts[0]==='visit'&&parts[3]==='accept') {
       const result=callbackAction(db,()=>actionRecord(db,u,parts[1],{action:'accept',version:Number(parts[2])}));
       answer=result.status==='accepted'?'Время посещения подтверждено всеми участниками.':'Ваш ответ сохранён. Ждём остальных участников.';title='Посещение';extra.recordId=result.id;
@@ -134,7 +173,7 @@ function callbackReply(db,u,data,answerId,channel) {
 }
 function textReply(db,u,raw,channel,config={}) {
   const cmd=parseCommand(raw);
-  if(cmd?.command==='/start'&&/^(join|link)_[A-Za-z0-9_-]{1,100}$/.test(cmd.arg)) return startPayload(db,u,cmd.arg,channel,config);
+  if(cmd?.command==='/start'&&/^(join|link|own)_[A-Za-z0-9_-]{1,100}$/.test(cmd.arg)) return startPayload(db,u,cmd.arg,channel,config);
   if(cmd?.command==='/start'&&!cmd.arg&&channel==='telegram') return welcomeReply(db,u,channel);
   const command=cmd&&!cmd.arg?cmd.command:'';
   if(command==='/stop') {const s=settings(u);s.bot=false;db.run('UPDATE users SET settings=? WHERE id=?',JSON.stringify(s),u.id);reply(db,u.id,'Уведомления выключены','Включить снова: /notifications. История остаётся в приложении.',null,{},channel);}

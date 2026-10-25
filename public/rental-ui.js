@@ -4,6 +4,11 @@ export const isTenant = (l, id) => tenantIds(l).includes(id);
 export const claimsFor = p => p.claims || (p.claim ? [p.claim] : []);
 export const freeAmount = p => Math.max(0, p.amount - p.confirmed - claimsFor(p).reduce((n,c) => n+c.amount,0));
 export const unitTitle = l => l?.unit_title || 'Квартира целиком';
+// Owner rights come from the server per apartment: 'owner' (main) or 'co_owner'.
+export const canManage = a => a?.my_role === 'owner' || a?.my_role === 'co_owner';
+export const isMainOwner = a => a?.my_role === 'owner';
+export const isOwnerSide = (a, userId) => (a?.owners || []).some(o => o.id === userId);
+export const ownerNames = a => (a?.owners || []).map(o => o.name).join(', ');
 export function metersFor(d,l,{archived=false}={}) {
   if(!l)return [];
   return (d.meters||[]).filter(m => (m.lease_id===l.id || (m.scope==='apartment'&&m.apartment_id===l.apartment_id)) && (archived || m.active));

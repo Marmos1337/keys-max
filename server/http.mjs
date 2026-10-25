@@ -16,6 +16,7 @@ import { mergeGuide, GUIDE_LIMIT, GUIDE_TOPICS } from '../public/guide-state.js'
 import { enqueueUpdate, deepLink, botLink } from './bot.mjs';
 import { enqueueTelegramUpdate, telegramBotLink } from './telegram.mjs';
 import { telegramHealth } from './telegram-poller.mjs';
+import * as O from './owners.mjs';
 import { createAccountLink, claimAccountLink, PLATFORMS } from './links.mjs';
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.png': 'image/png', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2' };
@@ -84,7 +85,7 @@ route('POST', '/api/apartments/:id/delete', ctx => {
 route('POST', '/api/apartments/:id/leases', ({ db, user, body, params }) => D.createLease(db, user, params.id, body), { mutate: true });
 route('POST','/api/leases/:id/archive-draft',({db,user,params})=>D.archiveDraftLease(db,user,params.id),{mutate:true});
 // Links for each configured messenger; the owner's own messenger goes first.
-function inviteLinks(config, i, platform) { const links = { max: config.botUsername || !config.telegram ? botLink(config, 'join_' + i.code) : '', telegram: config.telegram ? telegramBotLink(config, 'join_' + i.code) : '' }; const preferred = platform === 'telegram' && links.telegram ? 'telegram' : links.max ? 'max' : 'telegram'; return { ...i, url: links[preferred], platform: preferred, links, days: D.INVITE_DAYS }; }
+function inviteLinks(config, i, platform, prefix = 'join_') { const links = { max: config.botUsername || !config.telegram ? botLink(config, prefix + i.code) : '', telegram: config.telegram ? telegramBotLink(config, prefix + i.code) : '' }; const preferred = platform === 'telegram' && links.telegram ? 'telegram' : links.max ? 'max' : 'telegram'; return { ...i, url: links[preferred], platform: preferred, links, days: D.INVITE_DAYS }; }
 route('POST', '/api/leases/:id/invite', ({ db, user, params, config, body }) => inviteLinks(config, D.createInvite(db, user, params.id, { label: body.label, secret: config.secret }), body.platform), { mutate: true });
 route('POST', '/api/invites/:id/share', ({ db, user, params, config, body }) => inviteLinks(config, D.shareInvite(db, user, params.id, config.secret), body.platform), { mutate: true });
 route('POST', '/api/invites/:id/renew', ({ db, user, params, config, body }) => inviteLinks(config, D.renewInvite(db, user, params.id, config.secret), body.platform), { mutate: true });
@@ -93,6 +94,15 @@ route('POST', '/api/invites/:id/revoke', ({ db, user, params }) => D.revokeInvit
 // already proven by the messenger signature, so this is as safe as the bot button.
 route('POST', '/api/invites/preview', ({ db, user, body }) => { try { const c = D.previewInvite(db, user, body.code); return { ok: true, owner: c.owner, apartment: c.apartment.title, unit: c.unit, rent: c.lease.rent, lease_id: c.lease.id, label: c.meta?.label || '' }; } catch (e) { if (!e.status) throw e; return { ok: false, reason: e.reason || 'error', message: e.message, lease_id: e.lease_id || null }; } });
 route('POST', '/api/invites/accept', ({ db, user, body }) => D.joinInvite(db, user, body.code), { mutate: true });
+// Co-owners: links «own_…», managed by the main owner; a co-owner can leave on their own.
+route('POST', '/api/apartments/:id/owner-invite', ({ db, user, params, config, body }) => inviteLinks(config, O.createOwnerInvite(db, user, params.id, { label: body.label, secret: config.secret }), body.platform, 'own_'), { mutate: true });
+route('POST', '/api/owner-invites/:id/share', ({ db, user, params, config, body }) => inviteLinks(config, O.shareOwnerInvite(db, user, params.id, config.secret), body.platform, 'own_'), { mutate: true });
+route('POST', '/api/owner-invites/:id/renew', ({ db, user, params, config, body }) => inviteLinks(config, O.renewOwnerInvite(db, user, params.id, config.secret), body.platform, 'own_'), { mutate: true });
+route('POST', '/api/owner-invites/:id/revoke', ({ db, user, params }) => O.revokeOwnerInvite(db, user, params.id), { mutate: true });
+route('POST', '/api/owner-invites/preview', ({ db, user, body }) => { try { const c = O.previewOwnerInvite(db, user, body.code); return { ok: true, apartment: c.apartment.title, address: c.apartment.address, inviter: c.inviter, owners: c.owners, apartment_id: c.apartment.id }; } catch (e) { if (!e.status) throw e; return { ok: false, reason: e.reason || 'error', message: e.message, apartment_id: e.apartment_id || null }; } });
+route('POST', '/api/owner-invites/accept', ({ db, user, body }) => O.joinOwnerInvite(db, user, body.code), { mutate: true });
+route('POST', '/api/apartments/:id/co-owners/:userId/remove', ({ db, user, params }) => O.removeCoOwner(db, user, params.id, params.userId), { mutate: true });
+route('POST', '/api/apartments/:id/leave', ({ db, user, params }) => O.leaveApartment(db, user, params.id), { mutate: true });
 route('POST', '/api/join', ({ db, user, body, config }) => { if(config.production) fail(409,'Примите приглашение в боте Ключей. Откройте персональную ссылку собственника.'); return D.joinInvite(db,user,body.code); }, { mutate: true });
 route('POST', '/api/apartments/:id/units', ({db,user,params,body}) => createUnit(db,user,params.id,body), {mutate:true});
 route('POST', '/api/units/:id', ({db,user,params,body}) => updateUnit(db,user,params.id,body), {mutate:true});

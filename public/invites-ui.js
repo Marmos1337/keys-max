@@ -45,17 +45,18 @@ export function inviteCreateForm(l, unitTitle) {
 }
 const step = (n, title, text) => `<div class="invite-step"><span class="invite-step-n">${n}</span><span><b>${title}</b><small>${text}</small></span></div>`;
 
-export function inviteResult(invite, { inHost, platformLabel, renewed = false } = {}) {
+export function inviteResult(invite, { inHost, platformLabel, renewed = false, kind = 'tenant' } = {}) {
+    const owner = kind === 'owner';
     const otherKey = invite.platform === 'telegram' ? 'max' : 'telegram', other = invite.links?.[otherKey], otherName = otherKey === 'max' ? 'MAX' : 'Telegram';
-    const who = invite.label ? `для «${esc(invite.label)}»` : 'для одного жильца';
+    const who = invite.label ? `для «${esc(invite.label)}»` : owner ? 'для одного совладельца' : 'для одного жильца';
     return `<div class="form-stack invite-result" data-invite-result>
         <div class="invite-success" aria-hidden="true"><span class="success-ring">${icon('check', 30)}</span></div>
         <p class="invite-lead">${renewed ? 'Новая ссылка готова, старая больше не работает.' : 'Ссылка готова'} — ${who}, действует ${invite.days || 7} дней.</p>
         <div class="code-box invite-url" data-invite-url>${esc(invite.url)}</div>
         <div class="action-row stacked">${button(icon('send', 18) + (inHost ? ` Отправить в ${esc(platformLabel)}` : ' Поделиться'), 'share-invite', '', 'primary wide')}${button(icon('copy', 18) + ' Скопировать ссылку', 'copy-code', '', 'secondary wide')}</div>
-        ${other ? `<details class="invite-other"><summary>Жилец пользуется ${otherName}?</summary><p class="small-note">Отправьте ему эту ссылку — она ведёт в бота Ключей в ${otherName}. Сработает только одна из двух: первая принятая.</p><div class="code-box invite-url">${esc(other)}</div>${button(icon('copy', 18) + ' Скопировать ссылку для ' + otherName, 'copy-other-link', '', 'ghost wide')}</details>` : ''}
-        ${notice('Жилец откроет ссылку → бот покажет квартиру → он нажмёт «Принять приглашение». Вы получите уведомление, а в разделе «Жильцы» статус сменится на «Принял».', 'blue', 'info')}
-        ${button(icon('invite', 18) + ' Пригласить ещё одного жильца', 'invite', '', 'ghost wide')}
+        ${other ? `<details class="invite-other"><summary>${owner ? 'Человек пользуется' : 'Жилец пользуется'} ${otherName}?</summary><p class="small-note">Отправьте ему эту ссылку — она ведёт в бота Ключей в ${otherName}. Сработает только одна из двух: первая принятая.</p><div class="code-box invite-url">${esc(other)}</div>${button(icon('copy', 18) + ' Скопировать ссылку для ' + otherName, 'copy-other-link', '', 'ghost wide')}</details>` : ''}
+        ${notice(owner ? 'Человек откроет ссылку → бот покажет квартиру → он нажмёт «Стать совладельцем». Вы получите уведомление, а в «Совладельцах» появится его имя.' : 'Жилец откроет ссылку → бот покажет квартиру → он нажмёт «Принять приглашение». Вы получите уведомление, а в разделе «Жильцы» статус сменится на «Принял».', 'blue', 'info')}
+        ${owner ? '' : button(icon('invite', 18) + ' Пригласить ещё одного жильца', 'invite', '', 'ghost wide')}
     </div>`;
 }
 
@@ -85,16 +86,16 @@ export function inviteProblem(p) {
     return `<div class="form-stack">${notice(esc(p.message), p.reason === 'member' ? 'green' : 'amber', p.reason === 'member' ? 'check' : 'info')}${p.reason === 'member' && p.lease_id ? button('Открыть квартиру', 'lease-select', `data-id="${esc(p.lease_id)}"`, 'primary wide') : button('Понятно', 'close-modal', '', 'secondary wide')}</div>`;
 }
 // Outside a messenger: send the person to the bot of their messenger.
-export function inviteOutside(code, config) {
+export function inviteOutside(code, config, prefix = 'join_') {
     const tg = config.telegram?.enabled && config.telegram.bot_url, max = config.max?.enabled && config.max_bot_url;
-    const withStart = url => { try { const u = new URL(url); u.searchParams.set('start', 'join_' + code); return u.href; } catch { return ''; } };
+    const withStart = url => { try { const u = new URL(url); u.searchParams.set('start', prefix + code); return u.href; } catch { return ''; } };
     const links = [tg && ['Открыть в Telegram', withStart(tg), 'telegram'], max && ['Открыть в MAX', withStart(max), 'max']].filter(x => x && x[1]);
     return `<div class="form-stack"><p>Приглашение открывается в боте Ключей — там вы увидите квартиру и подтвердите присоединение. Выберите свой мессенджер:</p><div class="action-row stacked">${links.map(([label, href, name], n) => `<a class="btn ${n ? 'secondary' : 'primary'} wide" href="${esc(href)}" rel="noopener" data-platform-link="${name}">${label}</a>`).join('')}</div><p class="small-note">Нет мессенджера на этом устройстве? Откройте ссылку на телефоне.</p></div>`;
 }
 export function joinedWelcome(s, l) {
-    const d = s.data, a = d.apartments.find(x => x.id === l.apartment_id), owner = d.people.find(p => p.id === a?.owner_id);
+    const d = s.data, a = d.apartments.find(x => x.id === l.apartment_id), owners = (a?.owners || []).map(o => o.name).join(', ') || d.people.find(p => p.id === a?.owner_id)?.name;
     return `<div class="form-stack joined-welcome"><div class="invite-success" aria-hidden="true"><span class="success-ring">${icon('check', 30)}</span></div>
-        <p class="invite-lead">Вы в аренде «${esc(a?.title || 'Квартира')}».${owner ? `<br><span class="muted">Собственник — ${esc(owner.name)}</span>` : ''}</p>
+        <p class="invite-lead">Вы в аренде «${esc(a?.title || 'Квартира')}».${owners ? `<br><span class="muted">${(a?.owners || []).length > 1 ? 'Собственники' : 'Собственник'} — ${esc(owners)}</span>` : ''}</p>
         <div class="joined-grid">${tile('wallet', 'Платежи', 'Начисления и отметки об оплате', 'finances')}${l.meters_enabled ? tile('meter', 'Счётчики', 'Показания раз в месяц, с фото', 'meters') : ''}${tile('tool', 'Заявки', 'Что-то сломалось — напишите', 'requests')}</div>
         ${button('Начать', 'close-modal', '', 'primary wide')}</div>`;
 }

@@ -1,4 +1,5 @@
 /** Apartment covers are private data, not public static assets or lease documents. */
+import { isManager } from './rental.mjs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile, unlink } from 'node:fs/promises';
@@ -94,8 +95,8 @@ export async function storeCover(db, u, bytes, inputName, config) {
 }
 
 export function bindCover(db, u, apartmentId, id) {
-    const a = db.get('SELECT * FROM apartments WHERE id=? AND owner_id=?', apartmentId, u.id);
-    if (!a) fail(404, 'Квартира не найдена.');
+    const a = db.get('SELECT * FROM apartments WHERE id=?', apartmentId);
+    if (!a || !isManager(db, a, u.id)) fail(404, 'Квартира не найдена.');
     if (id !== null) {
         V.text(id, 'Идентификатор обложки', 80);
         const f = db.get('SELECT * FROM apartment_covers WHERE id=?', id);
@@ -107,7 +108,7 @@ export function bindCover(db, u, apartmentId, id) {
 }
 
 export function canSeeCover(db, u, a) {
-    return a.owner_id === u.id || !!db.get("SELECT 1 FROM leases l JOIN lease_members lm ON lm.lease_id=l.id WHERE l.apartment_id=? AND lm.user_id=? AND l.status IN ('active','ending')", a.id, u.id);
+    return isManager(db, a, u.id) || !!db.get("SELECT 1 FROM leases l JOIN lease_members lm ON lm.lease_id=l.id WHERE l.apartment_id=? AND lm.user_id=? AND l.status IN ('active','ending')", a.id, u.id);
 }
 export function requireCover(db, u, id) {
     const f = db.get('SELECT * FROM apartment_covers WHERE id=?', id);

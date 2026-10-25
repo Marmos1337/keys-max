@@ -331,3 +331,11 @@ main[data-page="record"] .page-heading h1 { font-family: inherit; font-weight: 7
   .heading-actions > .btn { padding: 8px 10px; font-size: 12px; }
   .quick > span:nth-child(2) { font-size: 13px; }
 }
+
+/* 09 · Co-owners (0.6) --------------------------------------------------------- */
+.owners-section .people-list { margin-bottom: 12px; }
+.owner-row .person-avatar { background: var(--ink); color: var(--on-ink); }
+.owner-row .badge.blue { background: var(--surface-2); color: var(--text); }
+.person-copy .you { color: var(--muted); font-weight: 500; font-size: 12px; }
+.owners-hint { margin: -2px 2px 12px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.person-copy b .you { display: inline; margin: 0; }

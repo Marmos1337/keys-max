@@ -2,13 +2,14 @@ import { apartmentDeleteDialog, withoutApartment } from './apartment-delete-ui.j
 import { hydrateGuide, syncGuide, recordGuide, showGuidePrompt, guideContent } from './guide.js';
 import { guideTopic } from './guide-state.js';
 import { pageTone, enhanceUI, rememberStrips, fitNumericLabels } from './ui.js';
-import { dueForMonth, tenantIds, isTenant, unitTitle, metersFor, pendingMeters, claimsFor, freeAmount, displayedRule, editableMonth, monthLabel } from './rental-ui.js';
+import { canManage, isMainOwner, dueForMonth, tenantIds, isTenant, unitTitle, metersFor, pendingMeters, claimsFor, freeAmount, displayedRule, editableMonth, monthLabel } from './rental-ui.js';
 import { applyTheme, setTheme, useHostTheme } from './theme.js';
 import { platform, bridgeReady, launchData, hostScheme, onHostSchemeChange, paintHost, haptic, closingConfirmation, syncBackButton, openLink, share, download, requestWriteAccess } from './platform.js';
 import { request, post, setToken, uploadFiles } from './api.js';
 import { coverFields, handleCoverChange, collectCover, releaseCoverPreviews } from './images.js';
 import { welcome, roleView, shell, pageView, model, actionsFor } from './views.js';
 import { baselineForm } from './meters-ui.js';
+import { ownerInviteForm, ownerInviteManage, coOwnerManage, leaveForm, ownerInvitePreview, ownerInviteProblem, coOwnerWelcome } from './owners-ui.js';
 import { paymentFields } from './payments-ui.js';
 import { peopleSection, inviteCreateForm, inviteResult, inviteManage, invitePreview, inviteProblem, inviteOutside, joinedWelcome } from './invites-ui.js';
 import { uuid, esc, icon, button, notice, field, textarea, select, uploadField, localISO, today, parseAmount, money, number, date, categoryNames, kindNames } from './utils.js';
@@ -139,7 +140,7 @@ function setFormError(form, message){ const box=form.querySelector('.form-error'
 function chosenLease() { const m = model(state); if (!m.l)
     throw Error('Сначала добавьте квартиру или присоединитесь по приглашению.'); if (m.l.status === 'ended')
     throw Error('Эта аренда завершена. Откройте активную аренду.'); return m; }
-function leasePicker(currentId) { const { d, u, owner } = model(state); const leases = d.leases.filter(l => l.status !== 'ended' && (owner ? d.apartments.some(a => a.id === l.apartment_id && a.owner_id === u.id) : isTenant(l,u.id))); return select('Квартира / аренда', 'lease_id', leases.map(l => [l.id, (d.apartments.find(a => a.id === l.apartment_id)?.title || 'Квартира')+' · '+unitTitle(l)]), currentId); }
+function leasePicker(currentId) { const { d, u, owner } = model(state); const leases = d.leases.filter(l => l.status !== 'ended' && (owner ? d.apartments.some(a => a.id === l.apartment_id && canManage(a)) : isTenant(l,u.id))); return select('Квартира / аренда', 'lease_id', leases.map(l => [l.id, (d.apartments.find(a => a.id === l.apartment_id)?.title || 'Квартира')+' · '+unitTitle(l)]), currentId); }
 function timesFields(start = localISO(86400000), end = localISO(86400000 + 3600000)) { return `<div class="form-grid date-grid">${field('Начало', 'start', 'datetime-local', start, 'required')}${field('Окончание', 'end', 'datetime-local', end, 'required')}</div><p class="small-note">Часовой пояс устройства: ${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}. У другой стороны время отобразится в её часовом поясе.</p>`; }
 function newRecord(kind) {
     const { l, owner } = chosenLease();
@@ -254,7 +255,7 @@ function ruleModal(id='',newState='') {
 }
 function editApartment(id, photoOnly = false) {
     const a = state.data.apartments.find(a => a.id === id);
-    if (!a || a.owner_id !== state.data.user.id) throw Error('Редактировать квартиру может только её собственник.');
+    if (!canManage(a)) throw Error('Редактировать квартиру могут только её собственники.');
     const l = state.data.leases.find(l=>l.id===state.leaseId&&l.apartment_id===id)||state.data.leases.find(l=>l.apartment_id===id&&l.status==='active');
     const draftLease = !photoOnly && l && !tenantIds(l).length && !state.data.records.some(r => r.lease_id === l.id);
     let fields = (photoOnly ? '' : apartmentFields(a)) + coverFields(a);
@@ -266,7 +267,7 @@ function editApartment(id, photoOnly = false) {
 }
 async function deleteApartmentModal(id) {
     const { a, u, owner } = model(state);
-    if (!owner || !a || a.id !== id || a.owner_id !== u.id) throw Error('Квартиру может удалить только её собственник.');
+    if (!owner || !a || a.id !== id || !isMainOwner(a)) throw Error('Квартиру может удалить только главный владелец.');
     const userId = u.id;
     const preview = await request('/apartments/' + encodeURIComponent(id) + '/deletion-preview');
     // Ignore a slow response if the user has navigated to a different property/role.
@@ -280,7 +281,7 @@ function actionModal(id, action, claimId='') {
     if (!r)
         throw Error('Запись не найдена.');
     // Receipt of a marked payment is confirmed from its own card, not from the action bar.
-    const ownsCharge = r.kind === 'charge' && state.data.apartments.find(a => a.id === r.apartment_id)?.owner_id === state.data.user.id;
+    const ownsCharge = r.kind === 'charge' && canManage(state.data.apartments.find(a => a.id === r.apartment_id));
     const item = actionsFor(r, state).find(x => x.action === action) || (ownsCharge && ['confirm', 'reject'].includes(action) && claimsFor(r.payload).length ? { action, label: action === 'confirm' ? 'Получил' : 'Не получил' } : null);
     if (!item)
         throw Error('Действие уже недоступно. Обновите страницу.');
@@ -459,6 +460,43 @@ async function clickAction(el) {
         modal('Пригласить жильца', inviteCreateForm(l, unitTitle(l)));
         return;
     }
+    if (act === 'owner-invite') {
+        const a = state.data.apartments.find(x => x.id === el.dataset.id);
+        modal('Пригласить совладельца', ownerInviteForm(a));
+        return;
+    }
+    if (act === 'owner-invite-manage') {
+        const i = (state.data.owner_invites || []).find(x => x.id === el.dataset.id);
+        if (!i) throw Error('Приглашение не найдено. Обновите страницу.');
+        modal(i.label ? 'Ссылка для «' + i.label + '»' : 'Ссылка для совладельца', ownerInviteManage(i));
+        return;
+    }
+    if (act === 'owner-invite-share-again' || act === 'owner-invite-renew') {
+        const invite = await post('/owner-invites/' + encodeURIComponent(el.dataset.id) + (act === 'owner-invite-renew' ? '/renew' : '/share'), { platform: platform.name });
+        showInviteResult(invite, act === 'owner-invite-renew', 'owner');
+        reload().catch(() => {});
+        return;
+    }
+    if (act === 'owner-invite-revoke') {
+        modal('Отозвать ссылку?', formContent('owner-invite-revoke', notice('Ссылка перестанет работать сразу. Совладельцем по ней никто не станет.', 'amber'), 'Отозвать', `data-id="${esc(el.dataset.id)}"`));
+        return;
+    }
+    if (act === 'co-owner-manage') {
+        const a = model(state).a, o = (a?.owners || []).find(x => x.id === el.dataset.id);
+        if (!o) throw Error('Совладелец не найден. Обновите страницу.');
+        modal('Совладелец', coOwnerManage(a, o));
+        return;
+    }
+    if (act === 'apartment-leave') {
+        const a = state.data.apartments.find(x => x.id === el.dataset.id);
+        modal('Выйти из совладельцев?', leaveForm(a));
+        return;
+    }
+    if (act === 'apartment-open') {
+        if (state.modal) closeModal();
+        openApartment(el.dataset.id);
+        return;
+    }
     if (act === 'invite-manage') {
         const i = (state.data.invites || []).find(x => x.id === el.dataset.id);
         if (!i) throw Error('Приглашение не найдено. Обновите страницу.');
@@ -485,7 +523,7 @@ async function clickAction(el) {
         return;
     }
     if (act === 'share-invite') {
-        const i = state.modal.invite, lead = 'Приглашаю в Ключи — там платежи, счётчики и заявки по нашей квартире. Откройте ссылку и нажмите «Принять приглашение» в боте:', text = lead + '\n' + i.url;
+        const i = state.modal.invite, lead = state.modal.inviteKind === 'owner' ? `Приглашаю вести квартиру «${i.apartment_title || 'нашу квартиру'}» вместе в Ключах. Откройте ссылку и нажмите «Стать совладельцем» в боте:` : 'Приглашаю в Ключи — там платежи, счётчики и заявки по нашей квартире. Откройте ссылку и нажмите «Принять приглашение» в боте:', text = lead + '\n' + i.url;
         if (platform.telegram && bridgeData) {
             await share(lead, i.url);
         }
@@ -609,6 +647,8 @@ async function applyStart() {
     const start=state.pendingStart||new URLSearchParams(location.search).get('startapp');state.pendingStart='';
     if(!start)return;
     if(start.startsWith('join_'))return openInvite(start.slice(5)).catch(e=>toast(e.message,true));
+    if(start.startsWith('own_'))return openOwnerInvite(start.slice(4)).catch(e=>toast(e.message,true));
+    if(start.startsWith('a_')){openApartment(start.slice(2));return;}
     if(start.startsWith('j_')) {
         const l=state.data.leases.find(x=>x.id===start.slice(2));
         if(!l){toast('Эта аренда недоступна.',true);return;}
@@ -638,8 +678,26 @@ function inviteCode(raw) {
     const t=String(raw||'').trim(),m=t.match(/(?:join_|[?&]invite=)([A-Za-z0-9_-]{8,100})/);
     return m?m[1]:t.replace(/^join_/,'');
 }
-async function showInviteResult(invite, renewed=false) {
-    modal(renewed?'Новая ссылка':'Ссылка для жильца',inviteResult(invite,{inHost:!!state.platform?.inHost,platformLabel:platform.label,renewed}),{invite});
+async function showInviteResult(invite, renewed=false, kind='tenant') {
+    const a=state.data?.apartments.find(x=>x.id===invite.apartment_id);
+    if(a)invite.apartment_title=a.title;
+    modal(renewed?'Новая ссылка':kind==='owner'?'Ссылка для совладельца':'Ссылка для жильца',inviteResult(invite,{inHost:!!state.platform?.inHost,platformLabel:platform.label,renewed,kind}),{invite,inviteKind:kind});
+}
+function openApartment(id) {
+    const a=state.data.apartments.find(x=>x.id===id);
+    if(!a){toast('Эта квартира недоступна.',true);return false;}
+    state.apartmentId=a.id;state.leaseId='';state.aptTab='overview';
+    if(canManage(a)&&state.data.user.role!=='owner')state.data.user.role='owner';
+    nav('apartments',null,{replace:true});return true;
+}
+// A co-owner link opened inside the Mini App.
+async function openOwnerInvite(code) {
+    code=String(code||'').replace(/^own_/,'').trim();
+    if(!code)return;
+    if(state.config.mode!=='demo'&&!state.platform?.inHost)return modal('Приглашение в Ключи',inviteOutside(code,state.config,'own_'));
+    const p=await post('/owner-invites/preview',{code});
+    if(!p.ok)return modal(p.reason==='member'?'Вы уже совладелец':'Ссылка не сработала',ownerInviteProblem(p));
+    modal('Совместное владение',ownerInvitePreview(p,code));
 }
 // A link opened inside the Mini App: confirm here, no detour through the bot chat.
 async function openInvite(code) {
@@ -703,7 +761,7 @@ async function submit(form) {
                 confirmed: true, version: Number(form.dataset.version), confirmation_token: form.dataset.confirmation
             }, key);
             state.data = withoutApartment(state.data, id);
-            state.apartmentId = state.data.apartments.find(a => a.owner_id === state.data.user.id)?.id || '';
+            state.apartmentId = state.data.apartments.find(a => canManage(a))?.id || '';
             state.leaseId = ''; state.scope = 'all'; state.unitScope = ''; state.aptTab = 'overview'; state.recordId = null;
             localStorage.setItem('keys.apartment', state.apartmentId);
             if (state.modal) state.modal.busy = false;
@@ -813,6 +871,37 @@ async function submit(form) {
             if(state.modal)state.modal.busy=false;
             await showInviteResult(invite);
             reload().catch(()=>{});
+            return;
+        }
+        if(type==='owner-invite-create') {
+            const invite=await post('/apartments/'+form.dataset.apartment+'/owner-invite',{platform:platform.name,label:String(data.label||'').trim()},key);
+            if(state.modal)state.modal.busy=false;
+            await showInviteResult(invite,false,'owner');
+            reload().catch(()=>{});
+            return;
+        }
+        if(type==='owner-invite-revoke') {
+            await post('/owner-invites/'+encodeURIComponent(form.dataset.id)+'/revoke',{},key);
+            message='Ссылка отозвана';
+        }
+        if(type==='co-owner-remove') {
+            await post('/apartments/'+form.dataset.apartment+'/co-owners/'+encodeURIComponent(form.dataset.user)+'/remove',{},key);
+            message='Совладелец убран';
+        }
+        if(type==='apartment-leave') {
+            await post('/apartments/'+form.dataset.apartment+'/leave',{},key);
+            state.apartmentId='';state.leaseId='';
+            message='Вы вышли из совладельцев';
+        }
+        if(type==='owner-invite-accept') {
+            result=await post('/owner-invites/accept',{code:form.dataset.code},key);
+            if(platform.telegram&&bridgeData&&!state.data.user.tg_bot_enabled&&await requestWriteAccess())await post('/profile/telegram-write').catch(()=>{});
+            if(state.modal)state.modal.busy=false;
+            closeModal();
+            await reload();
+            state.screen='app';
+            if(openApartment(result.apartment_id))modal('Добро пожаловать!',coOwnerWelcome(state.data.apartments.find(x=>x.id===result.apartment_id)));
+            toast('Вы совладелец квартиры');
             return;
         }
         if(type==='invite-revoke') {
@@ -979,7 +1068,7 @@ async function enterApp(session) {
     initializeGuide();
     if (state.data.user.settings.theme) setTheme(state.data.user.settings.theme);
     // An invite link skips the role question: the person is joining as a tenant.
-    state.screen = state.data.apartments.length || String(state.pendingStart || '').startsWith('join_') ? 'app' : 'role';
+    state.screen = state.data.apartments.length || /^(join|own)_/.test(String(state.pendingStart || '')) ? 'app' : 'role';
     render();
     if (state.screen === 'app') {
         nav('home', null, { replace: true, learn: false });
@@ -1040,7 +1129,7 @@ setInterval(async () => { if (state.screen !== 'app' || state.modal || loading |
     const old = state.data;
     const next = await request('/state');
     state.data = next;
-    const changed = old.records.length !== next.records.length || old.notifications.length !== next.notifications.length || old.records.some((r, i) => r.id !== next.records[i]?.id || r.version !== next.records[i]?.version) || old.comments.length !== next.comments.length || old.apartments.length !== next.apartments.length || old.apartments.some((a, i) => a.id !== next.apartments[i]?.id || a.version !== next.apartments[i]?.version) || ['leases','units','meters','meter_history','recurring_rules','invites','members'].some(k=>JSON.stringify(old[k])!==JSON.stringify(next[k]));
+    const changed = old.records.length !== next.records.length || old.notifications.length !== next.notifications.length || old.records.some((r, i) => r.id !== next.records[i]?.id || r.version !== next.records[i]?.version) || old.comments.length !== next.comments.length || old.apartments.length !== next.apartments.length || old.apartments.some((a, i) => a.id !== next.apartments[i]?.id || a.version !== next.apartments[i]?.version) || ['leases','units','meters','meter_history','recurring_rules','invites','members','owner_invites'].some(k=>JSON.stringify(old[k])!==JSON.stringify(next[k]));
     if (changed)
         render();
 }

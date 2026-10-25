@@ -98,6 +98,8 @@ export function deleteApartment(db, user, id, body) {
     // Cover and apartment reference each other. Break the forward reference first.
     db.run('UPDATE apartments SET cover_id=NULL WHERE id=?', id);
     db.run('DELETE FROM apartment_covers WHERE apartment_id=?', id);
+    db.run('DELETE FROM owner_invites WHERE apartment_id=?', id);
+    db.run('DELETE FROM apartment_members WHERE apartment_id=?', id);
     db.run('DELETE FROM apartments WHERE id=? AND owner_id=?', id, user.id);
     return { id, upload_keys: [...new Set([...g.files, ...g.covers].map(f => f.storage_key))] };
 }

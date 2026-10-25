@@ -34,6 +34,7 @@ export function createAccountLink(db, u) {
 export function accountHasData(db, userId) {
     return [
         'SELECT 1 FROM apartments WHERE owner_id=? LIMIT 1',
+        'SELECT 1 FROM apartment_members WHERE user_id=? LIMIT 1',
         'SELECT 1 FROM lease_members WHERE user_id=? LIMIT 1',
         'SELECT 1 FROM leases WHERE tenant_id=? LIMIT 1',
         'SELECT 1 FROM records WHERE created_by=? LIMIT 1',

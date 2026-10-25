@@ -106,6 +106,33 @@ export function ensureIdentitySchema(db) {
                 replaced_by TEXT
             );
             CREATE INDEX IF NOT EXISTS invite_meta_lease ON invite_meta(lease_id);
+            -- Co-ownership (0.6): who manages an apartment. The creator stays in
+            -- apartments.owner_id and gets role 'owner'; invited people are 'co_owner'.
+            CREATE TABLE IF NOT EXISTS apartment_members(
+                apartment_id TEXT NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
+                user_id TEXT NOT NULL REFERENCES users(id),
+                role TEXT NOT NULL CHECK(role IN ('owner','co_owner')),
+                added_by TEXT,
+                created_at TEXT NOT NULL,
+                PRIMARY KEY(apartment_id,user_id)
+            );
+            CREATE INDEX IF NOT EXISTS apartment_members_user ON apartment_members(user_id);
+            -- Runs on every start: also covers apartments created by an older release after a rollback.
+            INSERT OR IGNORE INTO apartment_members(apartment_id,user_id,role,added_by,created_at)
+                SELECT id,owner_id,'owner',owner_id,created_at FROM apartments;
+            CREATE TABLE IF NOT EXISTS owner_invites(
+                hash TEXT PRIMARY KEY,
+                apartment_id TEXT NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
+                label TEXT NOT NULL DEFAULT '',
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires INTEGER NOT NULL,
+                code_enc TEXT,
+                opened_at TEXT, opened_by TEXT,
+                used_by TEXT, accepted_at TEXT,
+                revoked_at TEXT, replaced_by TEXT
+            );
+            CREATE INDEX IF NOT EXISTS owner_invites_apartment ON owner_invites(apartment_id);
             CREATE TABLE IF NOT EXISTS bot_state(
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,

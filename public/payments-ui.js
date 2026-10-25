@@ -1,7 +1,7 @@
 // Cash-first payments. The tenant marks a hand-over, the owner confirms receipt.
 // A photo of the cash or a receipt is a note for the history, not a proof.
 import { esc, icon, button, notice, money, date, datetime, field, textarea, uploadField, today } from './utils.js';
-import { claimsFor, freeAmount, tenantIds } from './rental-ui.js';
+import { claimsFor, freeAmount, tenantIds, canManage } from './rental-ui.js';
 
 const how = m => m === 'transfer' ? 'переводом' : 'наличными';
 const person = (d, id, fallback) => esc(d.people.find(x => x.id === id)?.name || fallback);
@@ -15,7 +15,7 @@ function progress(p) {
 }
 
 export function chargeDetail(s, r, a, l) {
-    const d = s.data, p = r.payload, claims = claimsFor(p), owner = a.owner_id === d.user.id, open = l.status !== 'ended';
+    const d = s.data, p = r.payload, claims = claimsFor(p), owner = canManage(a), open = l.status !== 'ended';
     let html = `<div class="detail-amount" data-fit-number>${money(p.amount)}</div><p class="detail-due">Оплатить до ${date(p.due, { year: 'numeric' })}</p>` + progress(p);
     if (p.cancel_reason) html += notice(esc(p.cancel_reason), 'amber');
     if (tenantIds(l).length > 1) html += notice('Сумма общая на всех жильцов этой аренды. Отмечайте ту часть, которую передали вы.', 'blue');
@@ -23,9 +23,9 @@ export function chargeDetail(s, r, a, l) {
     if (p.rejection && !claims.length && r.status !== 'paid') html += notice('Собственник не подтвердил оплату: ' + esc(p.rejection) + (owner ? '' : '. Уточните и отметьте оплату ещё раз.'), 'amber');
     const log = [...(p.payments || []).map(x => ({ ...x, kind: 'paid', when: x.confirmed_at })), ...(p.disputes || []).map(x => ({ ...x, kind: 'dispute', when: x.disputed_at }))].sort((x, y) => String(y.when).localeCompare(String(x.when)));
     if (log.length) html += `<div class="payment-log"><h3>История оплаты</h3>${log.map(x => x.kind === 'paid'
-        ? `<div class="pay-entry ok">${icon('check', 18)}<span><b>${money(x.amount)} ${how(x.method || 'transfer')}</b><small>${x.user_id ? person(d, x.user_id, 'Жилец') : 'Записал собственник'}${x.paid_on ? ' · передано ' + date(x.paid_on) : ''} · получение подтверждено ${datetime(x.confirmed_at)}</small>${x.note ? `<small>${esc(x.note)}</small>` : ''}<span class="pay-files">${fileLinks(d, x.files)}</span></span></div>`
-        : `<div class="pay-entry dispute">${icon('info', 18)}<span><b>${money(x.amount)} ${how(x.method || 'transfer')} — не подтверждено</b><small>${person(d, x.user_id, 'Жилец')} · ${datetime(x.disputed_at)}</small><small>Причина: ${esc(x.reason)}</small></span></div>`).join('')}</div>`;
-    html += notice(owner ? 'Отметка жильца и фото не меняют статус сами. «Оплачено» появляется, только когда вы нажмёте «Получил».' : 'Деньги передаются вне приложения. Фото купюр или расписки помогает вспомнить детали, но не доказывает оплату — статус «Оплачено» ставит собственник, когда подтвердит получение.', 'neutral', 'shield');
+        ? `<div class="pay-entry ok">${icon('check', 18)}<span><b>${money(x.amount)} ${how(x.method || 'transfer')}</b><small>${x.user_id ? person(d, x.user_id, 'Жилец') : 'Записал собственник'}${x.paid_on ? ' · передано ' + date(x.paid_on) : ''} · получение подтверждено ${datetime(x.confirmed_at)}${x.confirmed_by ? ' · ' + person(d, x.confirmed_by, 'собственник') : ''}</small>${x.note ? `<small>${esc(x.note)}</small>` : ''}<span class="pay-files">${fileLinks(d, x.files)}</span></span></div>`
+        : `<div class="pay-entry dispute">${icon('info', 18)}<span><b>${money(x.amount)} ${how(x.method || 'transfer')} — не подтверждено</b><small>${person(d, x.user_id, 'Жилец')} · ${datetime(x.disputed_at)}${x.by ? ' · не подтвердил(а) ' + person(d, x.by, 'собственник') : ''}</small><small>Причина: ${esc(x.reason)}</small></span></div>`).join('')}</div>`;
+    html += notice(owner ? 'Отметка жильца и фото не меняют статус сами. «Оплачено» появляется, когда вы или другой собственник нажмёте «Получил».' : 'Деньги передаются вне приложения. Фото купюр или расписки помогает вспомнить детали, но не доказывает оплату — статус «Оплачено» ставит собственник, когда подтвердит получение.', 'neutral', 'shield');
     return html;
 }
 
