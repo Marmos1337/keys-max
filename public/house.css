@@ -558,3 +558,9 @@ body.modal-open .toast { animation-name: toast-drop; }
 .app-error { margin: 15vh 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); }
 @media (min-width:532px) { .app-error { margin: 15vh auto; } }
 .app-error .btn { min-height: 44px; }
+/* Sidebar (computer widths): same type floor and contrast as the rest; long names wrap. */
+.sidebar-tag, .account-card small, .sidebar-note small { font-size: 12px; }
+.sidebar-note small { color: var(--muted); }
+.account-card b { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; font-size: 13px; }
+.topbar-role { font-size: 13px; font-weight: 600; }
+.topbar-role .role-switch-caption { font-size: 12px; color: var(--muted); }
