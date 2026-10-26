@@ -1,7 +1,7 @@
 import { apartmentDeleteDialog, withoutApartment } from './apartment-delete-ui.js';
 import { hydrateGuide, syncGuide, recordGuide, showGuidePrompt, guideContent } from './guide.js';
 import { guideTopic } from './guide-state.js';
-import { pageTone, enhanceUI, rememberStrips, fitNumericLabels } from './ui.js';
+import { pageTone, enhanceUI, rememberStrips, fitNumericLabels, stripFade } from './ui.js';
 import { canManage, isMainOwner, dueForMonth, tenantIds, isTenant, unitTitle, metersFor, pendingMeters, claimsFor, freeAmount, displayedRule, editableMonth, monthLabel } from './rental-ui.js';
 import { applyTheme, setTheme, useHostTheme } from './theme.js';
 import { platform, bridgeReady, launchData, hostScheme, onHostSchemeChange, paintHost, haptic, closingConfirmation, syncBackButton, openLink, share, download, requestWriteAccess } from './platform.js';
@@ -19,11 +19,14 @@ let guideVisitTimer;
 let bridgeData = launchData(), toastTimer, previousFocus = null, loading = false;
 const pendingFiles = new WeakMap();
 // Enter motion plays when the screen changes, not when the same screen re-renders after a save or a poll.
-let lastScreenKey = '', animTimer;
+// A new tab of the same apartment only swaps the content under the tab strip:
+// the hero, the lease row and the strip itself stay where they are.
+let lastScreenKey = '', lastTab = '', animTimer;
 function markEnter() {
-    const key = [state.screen, state.page, state.recordId, state.aptTab, state.apartmentId, state.leaseId].join('|');
-    if (key === lastScreenKey) return;
-    lastScreenKey = key; root.dataset.anim = 'enter'; clearTimeout(animTimer);
+    const key = [state.screen, state.page, state.recordId, state.apartmentId, state.leaseId].join('|'), tab = state.page === 'apartments' ? state.aptTab : '';
+    if (key === lastScreenKey && tab === lastTab) return;
+    root.dataset.anim = key === lastScreenKey ? 'tab' : 'enter';
+    lastScreenKey = key; lastTab = tab; clearTimeout(animTimer);
     animTimer = setTimeout(() => { delete root.dataset.anim; }, 900);
 }
 function render() { hydrateGuide(state.data?.user); rememberStrips(root); markEnter(); if (state.screen === 'app' && state.data)
@@ -140,7 +143,7 @@ function setFormError(form, message){ const box=form.querySelector('.form-error'
 function chosenLease() { const m = model(state); if (!m.l)
     throw Error('Сначала добавьте квартиру или присоединитесь по приглашению.'); if (m.l.status === 'ended')
     throw Error('Эта аренда завершена. Откройте активную аренду.'); return m; }
-function leasePicker(currentId) { const { d, u, owner } = model(state); const leases = d.leases.filter(l => l.status !== 'ended' && (owner ? d.apartments.some(a => a.id === l.apartment_id && canManage(a)) : isTenant(l,u.id))); return select('Квартира / аренда', 'lease_id', leases.map(l => [l.id, (d.apartments.find(a => a.id === l.apartment_id)?.title || 'Квартира')+' · '+unitTitle(l)]), currentId); }
+function leasePicker(currentId) { const { d, u, owner } = model(state); const leases = d.leases.filter(l => l.status !== 'ended' && (owner ? d.apartments.some(a => a.id === l.apartment_id && canManage(a)) : isTenant(l,u.id))); return select('Квартира / аренда', 'lease_id', leases.map(l => [l.id, (d.apartments.find(a => a.id === l.apartment_id)?.title || 'Квартира')+((d.units || []).find(u => u.id === l.unit_id)?.kind === 'room' ? ' · '+unitTitle(l) : '')]), currentId); }
 function timesFields(start = localISO(86400000), end = localISO(86400000 + 3600000)) { return `<div class="form-grid date-grid">${field('Начало', 'start', 'datetime-local', start, 'required')}${field('Окончание', 'end', 'datetime-local', end, 'required')}</div><p class="small-note">Часовой пояс устройства: ${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}. У другой стороны время отобразится в её часовом поясе.</p>`; }
 function newRecord(kind) {
     const { l, owner } = chosenLease();
@@ -468,7 +471,7 @@ async function clickAction(el) {
     if (act === 'owner-invite-manage') {
         const i = (state.data.owner_invites || []).find(x => x.id === el.dataset.id);
         if (!i) throw Error('Приглашение не найдено. Обновите страницу.');
-        modal(i.label ? 'Ссылка для «' + i.label + '»' : 'Ссылка для совладельца', ownerInviteManage(i));
+        modal(i.label ? 'Ссылка «' + i.label + '»' : 'Ссылка для совладельца', ownerInviteManage(i));
         return;
     }
     if (act === 'owner-invite-share-again' || act === 'owner-invite-renew') {
@@ -500,7 +503,7 @@ async function clickAction(el) {
     if (act === 'invite-manage') {
         const i = (state.data.invites || []).find(x => x.id === el.dataset.id);
         if (!i) throw Error('Приглашение не найдено. Обновите страницу.');
-        modal(i.label ? 'Ссылка для «' + i.label + '»' : 'Ссылка-приглашение', inviteManage(i));
+        modal(i.label ? 'Ссылка «' + i.label + '»' : 'Ссылка-приглашение', inviteManage(i));
         return;
     }
     if (act === 'invite-share-again' || act === 'invite-renew') {
@@ -1151,7 +1154,7 @@ root.addEventListener('error', async e => {
 let numericFrame;
 window.addEventListener('resize', () => {
     cancelAnimationFrame(numericFrame);
-    numericFrame = requestAnimationFrame(() => fitNumericLabels(root));
+    numericFrame = requestAnimationFrame(() => { fitNumericLabels(root); root.querySelectorAll('[data-ui="segmented"]').forEach(stripFade); });
 });
 
 // The sticky top bar gets its hairline only once the page is scrolled.

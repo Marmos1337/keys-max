@@ -15,12 +15,14 @@ function lastOf(d, m) { return (d.meter_history || []).filter(v => v.meter_id ==
 function meterRow(s, m, { owner, input, pendingIds, ended }) {
     const d = s.data, last = lastOf(d, m), prev = m.previous ?? m.baseline;
     const sub = last ? `Последнее: <b>${fmt(last.value)}</b> · ${monthLabel(last.period)}${last.value > last.previous ? ` <span class="delta">+${fmt(last.value - last.previous)}</span>` : ''}`
-        : m.baseline_at ? `Старт: <b>${fmt(m.baseline)}</b> · ${date(m.baseline_at)}` : m.baseline ? `Старт: <b>${fmt(m.baseline)}</b>` : '<span class="muted">Стартовое значение не записано</span>';
-    const meta = [m.scope === 'apartment' ? 'Общий для квартиры' : 'Этот объект', esc(m.unit), priceText(m)].filter(Boolean).join(' · ');
+        : m.baseline_at ? `Старт: <b>${fmt(m.baseline)}</b> · ${date(m.baseline_at)}` : m.baseline ? `Старт: <b>${fmt(m.baseline)}</b>` : `<span class="muted">${owner ? 'Стартовое значение не записано' : 'Предыдущих показаний нет'}</span>`;
+    const asking = !owner && input && !ended && pendingIds.has(m.id);
+    // The unit sits next to the input when the tenant types; the line above does not repeat it.
+    const meta = [asking ? '' : esc(m.unit), priceText(m), m.scope === 'apartment' ? 'общий для квартиры' : ''].filter(Boolean).join(' · ');
     const end = owner ? `<button class="icon-button" data-act="edit-meter" data-id="${m.id}" aria-label="Настроить ${esc(m.label)}">${icon('edit', 18)}</button>`
-        : input && !ended && pendingIds.has(m.id) ? `<label class="meter-input"><span class="sr-only">${esc(m.label)}</span><input aria-label="${esc(m.label)}" name="meter_${m.id}" type="text" inputmode="decimal" placeholder="${fmt(prev)}" required pattern="[0-9]+([.,][0-9]{1,3})?"><small>${esc(m.unit)}</small></label>`
+        : input && !ended && pendingIds.has(m.id) ? `<label class="meter-input"><span class="sr-only">${esc(m.label)}</span><input aria-label="${esc(m.label)}" name="meter_${m.id}" type="text" inputmode="decimal" placeholder="${prev ? fmt(prev) : ''}" required pattern="[0-9]+([.,][0-9]{1,3})?"><small>${esc(m.unit)}</small></label>`
         : `<span class="badge green">Передано</span>`;
-    return `<div class="surface meter-row" data-tone="${tone[m.kind] || 'amber'}">${pillIcon(icons[m.kind] || 'meter', tone[m.kind] || 'amber')}<div class="meter-copy"><b>${esc(m.label)}</b><small>${meta}</small><small class="meter-last">${sub}</small></div>${end}</div>`;
+    return `<div class="surface meter-row" data-tone="${tone[m.kind] || 'amber'}">${pillIcon(icons[m.kind] || 'meter', tone[m.kind] || 'amber')}<div class="meter-copy"><b>${esc(m.label)}</b>${meta ? `<small>${meta}</small>` : ''}<small class="meter-last">${sub}</small></div>${end}</div>`;
 }
 
 // Starting readings card for the owner while no tenant has sent numbers for a meter.

@@ -124,7 +124,7 @@ function ownerInviteReply(db,u,code,channel='max',config={}) {
   } catch(e) {
     if(!e.status)throw e;
     if(e.reason==='member') reply(db,u.id,'Вы уже совладелец','Квартира уже есть в ваших Ключах.',null,{target:'a_'+e.apartment_id},channel);
-    else if(e.reason==='own') reply(db,u.id,'Это ваша ссылка',e.message+'\n\nОтправить её можно в Ключах: Квартира → Совладельцы.',null,{},channel);
+    else if(e.reason==='own') reply(db,u.id,'Это ваша ссылка',e.message+'\n\nОтправить её можно в Ключах: Квартира → Собственники.',null,{},channel);
     else reply(db,u.id,'Ссылка не сработала',e.message,null,{},channel);
   }
 }

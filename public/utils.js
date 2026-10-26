@@ -3,8 +3,19 @@ export { icon };
 export const esc = v => String(v ?? '').replace(/[&<>"']/g, x => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[x]));
 export const money = v => new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB', maximumFractionDigits: v % 100 ? 2 : 0 }).format((v || 0) / 100);
 export const number = v => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 3 }).format(v || 0);
+// Russian plural agreement: plural(1,'жилец','жильца','жильцов') → 'жилец', 2 → 'жильца', 5/11/12 → 'жильцов'.
+export function plural(n, one, few, many) {
+    const a = Math.abs(Math.trunc(Number(n) || 0)), d = a % 10, h = a % 100;
+    if (h >= 11 && h <= 14) return many;
+    return d === 1 ? one : d >= 2 && d <= 4 ? few : many;
+}
+// Number and noun that never break apart: count(2,'жилец','жильца','жильцов') → '2 жильца'.
+export const count = (n, one, few, many) => `${n} ${plural(n, one, few, many)}`;
+export const days = n => count(n, 'день', 'дня', 'дней');
+// Dates read as «5 октября 2026», without the trailing «г.» that clutters ranges and lines.
 export const date = (v, opts = {}) => { if (!v)
-    return 'Не указано'; return new Date(v.length === 10 ? v + 'T12:00:00' : v).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...opts }); };
+    return 'Не указано'; return new Date(v.length === 10 ? v + 'T12:00:00' : v).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...opts }).replace(/\s?г\.$/, '').replace(/^(\d+) /, '$1\u00a0'); };
+export const dateRange = (a, b) => `${date(a, { year: 'numeric' })} — ${date(b, { year: 'numeric' })}`;
 export const datetime = v => new Date(v).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 export const range = (a, b) => `${datetime(a)} — ${new Date(b).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
 export const localISO = offset => { const d = new Date(Date.now() + (offset || 0)); return new Date(+d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
@@ -16,6 +27,12 @@ export function parseAmount(v, scale = 100) { const raw = String(v ?? '').trim()
 export const statusNames = { open: 'Открыта', in_progress: 'В работе', resolved: 'На проверке', closed: 'Решена', cancelled: 'Отменено', pending: 'На согласовании', approved: 'Одобрено', rejected: 'Отклонено', compensated: 'Компенсировано', proposed: 'Ждёт ответа', counter: 'Новое время', accepted: 'Согласовано', completed: 'Завершено', claimed: 'Ждёт подтверждения', partial: 'Частично', paid: 'Оплачено', submitted: 'Передано', stored: 'Сохранено', recorded: 'Записано' };
 export const statusColor = s => ['closed', 'paid', 'accepted', 'compensated', 'submitted', 'completed'].includes(s) ? 'green' : ['open', 'rejected'].includes(s) ? 'red' : ['pending', 'claimed', 'proposed', 'counter', 'partial'].includes(s) ? 'amber' : 'blue';
 export const badge = (status, label) => `<span class="badge ${statusColor(status)}">${esc(label || statusNames[status] || status)}</span>`;
+// One status chip for a record everywhere (lists, detail, home). An unpaid bill past its date says so.
+export function recordBadge(r, today = '') {
+    if (r.kind === 'charge' && ['pending', 'partial'].includes(r.status) && today && r.payload?.due < today) return badge('open', 'Просрочен');
+    const label = r.kind === 'charge' && r.status === 'pending' ? 'К оплате' : r.kind === 'charge' && r.status === 'claimed' ? 'Ждёт подтверждения' : undefined;
+    return badge(r.status, label);
+}
 export const pillIcon = (name, color = 'blue') => `<span class="tile-icon ${color}" data-tone="${color}">${icon(name)}</span>`;
 const actionTones = Object.freeze({
     'new-apartment': 'blue', 'edit-apartment': 'blue', 'edit-photo': 'blue',

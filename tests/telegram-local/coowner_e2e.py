@@ -46,7 +46,8 @@ with sync_playwright() as p:
     own.click('.modal [data-act=close-modal]'); settle(own)
     code = url.split('own_')[1]
     push(text_msg(900100, 'Мама', '/start own_' + code))
-    m = wait_message(900100, lambda b: 'вести квартиру вместе' in b.get('text', ''))
+    # The seed leaves a queue of earlier notifications in the outbox; the invitation waits its turn.
+    m = wait_message(900100, lambda b: 'вести квартиру вместе' in b.get('text', ''), timeout=30)
     check('bot: Мама gets the co-owner invitation', m is not None and m['reply_markup']['inline_keyboard'][0][0].get('callback_data') == 'own|' + code, m)
     push(press(900100, 'Мама', 'own|' + code))
     done = wait_message(900100, lambda b: 'вы совладелец' in b.get('text', '').lower())
@@ -103,7 +104,7 @@ with sync_playwright() as p:
     check('Папа: left by himself', 'Квартира на Лесной' not in papa.inner_text('main'))
     own.goto(BASE + '/' + launch(777001, 'Анна')); own.wait_for_selector('.app-body', timeout=10000); open_apartment(own)
     own.click('.apartment-tabs [data-tab=history]'); settle(own)
-    hist = own.inner_text('main'); check('history: every co-owner change carries the actor', 'Мама — совладелец квартиры' in hist and 'Папа вышел(ла) из совладельцев' in hist, hist[:800])
+    hist = own.inner_text('main'); check('history: every co-owner change carries the actor', 'Мама — совладелец квартиры' in hist and 'Выход из совладельцев: Папа' in hist, hist[:800])
     tall(own, f'{OUT}/coowner-11-history.png')
     check('no page errors', not any(errors), errors)
     browser.close()

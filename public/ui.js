@@ -96,13 +96,26 @@ export function enhanceUI(root) {
         el.style.setProperty('--w', '0%'); el.dataset.grown = '1';
         requestAnimationFrame(() => requestAnimationFrame(() => el.style.setProperty('--w', w)));
     });
+    // Strips keep their scroll position across renders, then glide the selected pill
+    // into view with a peek of its neighbour; the edges fade where more items hide.
+    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     root?.querySelectorAll('[data-ui="segmented"]').forEach(el => {
         const active = el.querySelector('[aria-pressed="true"]');
         el.scrollLeft = stripPositions.get(el.getAttribute('aria-label')) || 0;
+        el.addEventListener('scroll', () => requestAnimationFrame(() => stripFade(el)), { passive: true });
+        stripFade(el);
         if (!active) return;
-        const left = active.getBoundingClientRect().left - el.getBoundingClientRect().left + el.scrollLeft;
-        if (left < el.scrollLeft + 6) el.scrollLeft = Math.max(0, left - 6);
-        else if (left + active.offsetWidth > el.scrollLeft + el.clientWidth - 6)
-            el.scrollLeft = left + active.offsetWidth - el.clientWidth + 6;
+        const peek = 36, left = active.offsetLeft, right = left + active.offsetWidth;
+        let target = el.scrollLeft;
+        if (left - peek < el.scrollLeft) target = Math.max(0, left - peek);
+        else if (right + peek > el.scrollLeft + el.clientWidth) target = Math.min(el.scrollWidth - el.clientWidth, right + peek - el.clientWidth);
+        if (Math.abs(target - el.scrollLeft) < 1) return;
+        if (calm || !stripPositions.has(el.getAttribute('aria-label'))) { el.scrollLeft = target; stripFade(el); }
+        else el.scrollTo({ left: target, behavior: 'smooth' });
     });
+}
+export function stripFade(el) {
+    const rest = el.scrollWidth - el.clientWidth - el.scrollLeft;
+    el.toggleAttribute('data-fade-start', el.scrollLeft > 2);
+    el.toggleAttribute('data-fade-end', rest > 2);
 }

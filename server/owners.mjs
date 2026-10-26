@@ -64,7 +64,7 @@ export function joinOwnerInvite(db, u, code) {
     // The new co-owner lands in the owner cabinet; the role switch keeps any rented flat.
     db.run("UPDATE users SET role='owner' WHERE id=?", u.id);
     apartmentEvent(db, u, a, `${u.name} — совладелец квартиры`, 'shared');
-    for (const id of managerIds(db, a)) if (id !== u.id) pushNotification(db, id, 'Новый совладелец', `${u.name} принял(а) приглашение и теперь видит и ведёт «${a.title}» вместе с вами.`, null, null, 'events', { target: 'a_' + a.id });
+    for (const id of managerIds(db, a)) if (id !== u.id) pushNotification(db, id, 'Новый совладелец', `${u.name} теперь совладелец «${a.title}»: видит и ведёт квартиру вместе с вами.`, null, null, 'events', { target: 'a_' + a.id });
     for (const id of tenantIdsOf(db, a)) pushNotification(db, id, 'У квартиры новый совладелец', `${u.name} теперь тоже собственник «${a.title}»: видит платежи, показания и заявки.`, null, null, 'events');
     return { apartment_id: a.id, role: 'co_owner' };
 }
@@ -102,7 +102,7 @@ export function removeCoOwner(db, u, apartmentId, userId) {
     db.run("DELETE FROM apartment_members WHERE apartment_id=? AND user_id=? AND role='co_owner'", a.id, userId);
     const name = nameOf(db, userId);
     apartmentEvent(db, u, a, `${name} больше не совладелец`, 'shared');
-    pushNotification(db, userId, 'Доступ к квартире закрыт', `${u.name} убрал(а) вас из совладельцев «${a.title}». История у вас больше не отображается.`, null, null, 'events');
+    pushNotification(db, userId, 'Доступ к квартире закрыт', `Вы больше не совладелец «${a.title}» — так решил главный владелец, ${u.name}. История квартиры у вас больше не отображается.`, null, null, 'events');
     for (const id of managerIds(db, a)) if (id !== u.id) pushNotification(db, id, 'Совладелец убран', `${name} больше не совладелец «${a.title}».`, null, null, 'events', { target: 'a_' + a.id });
     return { ok: true };
 }
@@ -113,7 +113,7 @@ export function leaveApartment(db, u, apartmentId) {
     if (!role) fail(404, 'Квартира не найдена.');
     if (role === 'owner') fail(409, 'Главный владелец не может выйти из своей квартиры. Её можно только удалить.');
     db.run("DELETE FROM apartment_members WHERE apartment_id=? AND user_id=? AND role='co_owner'", a.id, u.id);
-    apartmentEvent(db, u, a, `${u.name} вышел(ла) из совладельцев`, 'shared');
+    apartmentEvent(db, u, a, `Выход из совладельцев: ${u.name}`, 'shared');
     for (const id of managerIds(db, a)) pushNotification(db, id, 'Совладелец вышел', `${u.name} больше не совладелец «${a.title}».`, null, null, 'events', { target: 'a_' + a.id });
     return { ok: true };
 }

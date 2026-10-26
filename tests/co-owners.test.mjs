@@ -87,7 +87,7 @@ test('Co-owners: only the main owner invites, shares again, renews, revokes and 
   f.db.tx(()=>O.leaveApartment(f.db,co,a.id));assert.equal(managerRole(f.db,a,co.id),null);
   assert.equal(notes(f,f.owner.id,'Совладелец вышел').length,1);
   const hist=f.db.all('SELECT e.title,u.name FROM events e JOIN users u ON u.id=e.user_id WHERE e.apartment_id=? ORDER BY e.created_at',a.id).map(e=>e.name+': '+e.title);
-  assert.ok(hist.some(x=>x==='Мама: Мама — совладелец квартиры')&&hist.some(x=>x.startsWith('Алексей Петров: Мама больше не совладелец'))&&hist.some(x=>x.includes('вышел(ла) из совладельцев')),hist.join('\n'));
+  assert.ok(hist.some(x=>x==='Мама: Мама — совладелец квартиры')&&hist.some(x=>x.startsWith('Алексей Петров: Мама больше не совладелец'))&&hist.some(x=>x.includes('Выход из совладельцев:')),hist.join('\n'));
 });
 
 test('Co-owners: notifications reach every owner once, never the actor, and name who acted',t=>{

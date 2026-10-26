@@ -24,7 +24,7 @@ export function chargeDetail(s, r, a, l) {
     const log = [...(p.payments || []).map(x => ({ ...x, kind: 'paid', when: x.confirmed_at })), ...(p.disputes || []).map(x => ({ ...x, kind: 'dispute', when: x.disputed_at }))].sort((x, y) => String(y.when).localeCompare(String(x.when)));
     if (log.length) html += `<div class="payment-log"><h3>История оплаты</h3>${log.map(x => x.kind === 'paid'
         ? `<div class="pay-entry ok">${icon('check', 18)}<span><b>${money(x.amount)} ${how(x.method || 'transfer')}</b><small>${x.user_id ? person(d, x.user_id, 'Жилец') : 'Записал собственник'}${x.paid_on ? ' · передано ' + date(x.paid_on) : ''} · получение подтверждено ${datetime(x.confirmed_at)}${x.confirmed_by ? ' · ' + person(d, x.confirmed_by, 'собственник') : ''}</small>${x.note ? `<small>${esc(x.note)}</small>` : ''}<span class="pay-files">${fileLinks(d, x.files)}</span></span></div>`
-        : `<div class="pay-entry dispute">${icon('info', 18)}<span><b>${money(x.amount)} ${how(x.method || 'transfer')} — не подтверждено</b><small>${person(d, x.user_id, 'Жилец')} · ${datetime(x.disputed_at)}${x.by ? ' · не подтвердил(а) ' + person(d, x.by, 'собственник') : ''}</small><small>Причина: ${esc(x.reason)}</small></span></div>`).join('')}</div>`;
+        : `<div class="pay-entry dispute">${icon('info', 18)}<span><b>${money(x.amount)} ${how(x.method || 'transfer')} — не подтверждено</b><small>${person(d, x.user_id, 'Жилец')} · ${datetime(x.disputed_at)}${x.by ? ' · проверка: ' + person(d, x.by, 'собственник') : ''}</small><small>Причина: ${esc(x.reason)}</small></span></div>`).join('')}</div>`;
     html += notice(owner ? 'Отметка жильца и фото не меняют статус сами. «Оплачено» появляется, когда вы или другой собственник нажмёте «Получил».' : 'Деньги передаются вне приложения. Фото купюр или расписки помогает вспомнить детали, но не доказывает оплату — статус «Оплачено» ставит собственник, когда подтвердит получение.', 'neutral', 'shield');
     return html;
 }
@@ -35,7 +35,7 @@ export function paymentFields(r, action, state, claimId = '') {
     if (action === 'claim' || action === 'record_payment') {
         const tenant = action === 'claim';
         return `<div class="method-switch" role="radiogroup" aria-label="Как оплачено"><label><input type="radio" name="method" value="cash" checked><span>${icon('wallet', 18)} Наличными</span></label><label><input type="radio" name="method" value="transfer"><span>${icon('send', 18)} Переводом</span></label></div>`
-            + `<div class="form-grid">${field(tenant ? 'Сколько передали, ₽' : 'Сколько получили, ₽', 'amount', 'text', String(free / 100), 'required inputmode="decimal"')}${field('Когда', 'paid_on', 'date', today(), 'required')}</div>`
+            + `<div class="form-grid">${field(tenant ? 'Сколько передали, ₽' : 'Сколько получили, ₽', 'amount', 'text', new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 }).format(free / 100), 'required inputmode="decimal" autocomplete="off"')}${field('Когда', 'paid_on', 'date', today(), 'required')}</div>`
             + (tenant ? '' : `<label class="field"><span>От кого</span><select name="payer_id"><option value="">Не указывать</option>${(l?.tenant_ids || []).map(id => `<option value="${esc(id)}">${esc(d.people.find(x => x.id === id)?.name || 'Жилец')}</option>`).join('')}</select></label>`)
             + textarea(tenant ? 'Комментарий (кому, где передали)' : 'Комментарий', 'note')
             + uploadField('Фото купюр, расписки или чека — по желанию', true)

@@ -342,3 +342,219 @@ main[data-page="record"] .page-heading h1 { font-family: inherit; font-weight: 7
 .person-copy .you { color: var(--muted); font-weight: 500; font-size: 12px; }
 .owners-hint { margin: -2px 2px 12px; color: var(--muted); font-size: 13px; line-height: 1.5; }
 .person-copy b .you { display: inline; margin: 0; }
+
+/* 10 · Polish 2026-10-26 ------------------------------------------------------ */
+/* Rhythm on the 4/8 grid: blocks of a page sit 16 apart, sections 32, the page
+   title 24 above the first block. Margins of the old layers are reset here, so the
+   gaps stay equal on every screen and every width. */
+.app-body main { display: flex; flex-direction: column; gap: 16px; }
+.app-body main > * { margin-top: 0; margin-bottom: 0; }
+.app-body main > .section { margin-top: 16px; }
+.app-body main > .page-heading { margin: 0 0 8px; }
+.app-body main > .scope-control { margin: 0; }
+.section-heading { margin-bottom: 12px; }
+.section-heading h2 { display: flex; align-items: center; gap: 8px; }
+.section-heading .section-count { flex: none; min-width: 24px; height: 24px; padding: 0 8px; border-radius: var(--radius-control); background: var(--surface-2); color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: 0; }
+.form-stack, .modal .form-stack { gap: 16px; }
+.form-stack > .action-row, .form-stack > .action-row.stacked { margin: 0; }
+.invite-steps { display: grid; gap: 12px; }
+
+/* Page title: words first on the full width, page actions on their own line below. */
+@media (max-width:760px) {
+  .page-heading { flex-direction: column; align-items: stretch; gap: 12px; }
+  .page-heading > .btn { align-self: flex-start; min-height: 44px; }
+  .page-heading p { margin-top: 4px; }
+  .heading-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .heading-actions > .btn { flex: 1 1 auto; min-height: 44px; }
+}
+.heading-actions > .btn { min-height: 44px; }
+
+/* Rows of actions: labels never wrap inside a button. Two that do not fit side by
+   side take a full line each. */
+.action-row, .rule-card > .action-row, .claim-card .action-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.action-row > .btn { flex: 1 1 auto; width: auto; height: auto; min-height: 44px; white-space: nowrap; }
+.action-row.stacked { flex-direction: column; }
+.action-row.stacked > .btn { width: 100%; }
+.detail-actions { padding: 0; background: none; border: 0; box-shadow: none; border-radius: 0; }
+
+/* Strips (tabs, filters, apartment pills): scroll sideways, the hidden side fades,
+   the selected pill is glided into view by ui.js. */
+@property --fade-start { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --fade-end { syntax: "<length>"; inherits: false; initial-value: 0px; }
+.segmented { --fade-start: 0px; --fade-end: 0px; scroll-padding-inline: 36px; overscroll-behavior-x: contain;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  transition: --fade-start 200ms var(--ease), --fade-end 200ms var(--ease); }
+.segmented[data-fade-start] { --fade-start: 40px; }
+.segmented[data-fade-end] { --fade-end: 40px; }
+.segmented, .segmented.tabs { border-radius: var(--radius-control); padding: 4px; }
+.segment, .segment.tab { min-height: 44px; padding: 10px 16px; font-size: 14px; border-radius: var(--radius-control); }
+.property-pills .segment { padding: 10px 16px 10px 14px; }
+.segment.selected { color: var(--text); font-weight: 650; }
+@media (max-width:360px) { .segment, .segment.tab { padding: 10px 13px; font-size: 13px; } }
+
+/* Lease row: what is let and for whom, in two lines; the system picker opens from the whole row. */
+.lease-selector, .lease-selector.scope-control { position: relative; display: grid; grid-template-columns: 44px minmax(0,1fr) auto; align-items: center; gap: 12px; width: 100%; min-height: 72px; padding: 14px 16px; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-card); flex-direction: row; }
+.lease-selector .tile-icon { width: 44px; height: 44px; border-radius: 14px; }
+.lease-copy { min-width: 0; display: grid; gap: 2px; }
+.lease-copy b { font-size: 15px; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; }
+.lease-copy small { font-size: 13px; line-height: 1.4; color: var(--muted); }
+.lease-more { display: inline-flex; align-items: center; gap: 2px; height: 32px; padding: 0 6px 0 12px; border-radius: var(--radius-control); background: var(--surface-2); color: var(--muted); font-size: 13px; font-weight: 700; }
+.lease-selector > select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; appearance: none; -webkit-appearance: none; border: 0; }
+.lease-selector:not(.many) > select { pointer-events: none; }
+.lease-selector:not(.many) { grid-template-columns: 44px minmax(0,1fr); }
+.lease-selector:focus-within { box-shadow: 0 0 0 2px var(--focus); }
+@media (hover:hover) { .lease-selector.many:hover { border-color: var(--line-strong); } }
+.lease-selector.many:active { transform: scale(.985); }
+.lease-selector { transition: transform var(--motion-micro) var(--ease), border-color var(--duration); }
+
+/* Filter by apartment: the whole pill is the select, 44 tall. */
+.scope-control { position: relative; padding: 0 14px 0 16px; min-height: 44px; gap: 8px; }
+.scope-control > select { min-height: 44px; padding: 0 26px 0 0; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+/* Facts of a lease in pairs; long values take a full line. */
+.contract-grid, .lease-card .contract-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px 16px; margin-top: 16px; }
+.contract-row.wide { grid-column: 1 / -1; }
+.contract-row dt { font-size: 12px; color: var(--muted); }
+.contract-row dd { margin-top: 4px; font-size: 15px; line-height: 1.45; font-weight: 600; }
+.lease-card > .muted { margin-top: 4px; font-size: 13px; line-height: 1.5; }
+@media (max-width:330px) { .contract-grid, .lease-card .contract-grid { grid-template-columns: 1fr; } }
+.contract-panel .contract-terms { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; color: var(--muted); }
+
+/* People rows: role in the second line, a status chip only for links. */
+.person-copy b { font-size: 15px; font-weight: 650; }
+.person-copy small { margin-top: 2px; font-size: 13px; }
+.owner-row.invite-row { grid-template-columns: 40px minmax(0,1fr) 16px; }
+.person-row:not(.invite-row) { grid-template-columns: 40px minmax(0,1fr); }
+.person-row .badge { white-space: nowrap; }
+
+/* Lease pages: one grouped panel, neutral rows, colour in the icon. */
+.property-links, .app-body main > .property-links { display: block; padding: 4px; border-radius: var(--radius-lg); }
+.link-row { display: grid; grid-template-columns: 44px minmax(0,1fr) 18px; gap: 12px; align-items: center; width: 100%; padding: 12px; border-radius: var(--radius); background: transparent; border: 0; box-shadow: none; text-align: left; color: var(--text); }
+.link-row + .link-row { position: relative; }
+.link-row + .link-row::before { content: ''; position: absolute; top: 0; left: 68px; right: 12px; height: 1px; background: var(--line); }
+.link-copy { min-width: 0; display: grid; gap: 2px; }
+.link-copy b { font-size: 15px; font-weight: 650; line-height: 1.35; }
+.link-copy small { margin: 0; font-size: 13px; color: var(--muted); }
+.link-row > svg { color: var(--quiet); }
+@media (hover:hover) { .link-row:hover { background: var(--surface-hover); } }
+
+/* Units: the one being viewed says so instead of offering to open itself. */
+.unit-card.current { border-color: var(--line-strong); }
+.unit-current { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 32px; padding: 0 12px; border-radius: var(--radius-control); background: var(--surface-2); color: var(--muted); font-size: 13px; font-weight: 600; }
+.unit-card { padding: 20px; gap: 12px; }
+
+/* Events on the tenant home: icon, text with its status under it, chevron. */
+.event-row, .event-row.ui-row { display: grid; grid-template-columns: 44px minmax(0,1fr) 18px; gap: 12px; align-items: center; padding: 16px; flex-wrap: nowrap; }
+.event-copy { min-width: 0; display: grid; justify-items: start; gap: 2px; }
+.event-copy b { font-size: 15px; font-weight: 650; }
+.event-copy small { margin: 0; font-size: 13px; }
+.event-copy .badge { margin-top: 6px; font-size: 12px; }
+.event-row > .badge { margin: 0; }
+.event-row > svg { margin: 0; }
+
+/* Quick actions: icon above, two short lines of text, no squeeze at 320. */
+.quick-grid { gap: 8px; }
+.quick { display: grid; grid-template-columns: minmax(0,1fr) 16px; grid-template-rows: auto 1fr; align-items: start; gap: 12px 4px; min-height: 104px; padding: 16px; }
+.quick > .tile-icon { grid-column: 1; grid-row: 1; width: 40px; height: 40px; border-radius: 12px; }
+.quick > span:nth-child(2) { grid-column: 1 / -1; grid-row: 2; align-self: end; font-size: 14px; line-height: 1.3; }
+.quick > svg { grid-column: 2; grid-row: 1; width: 16px; height: 16px; justify-self: end; margin-top: 2px; }
+@media (max-width:760px) { .quick { min-height: 104px; padding: 16px; } }
+
+/* Type floor: nothing below 12 px except the six tab labels on the narrowest phones. */
+.badge, .event-row .badge { font-size: 12px; }
+.record-meta, .record-card .record-meta { font-size: 12px; color: var(--muted); }
+.record-sub { font-size: 13px; }
+.stat-label { font-size: 12px; }
+.cover-change { font-size: 12px; min-height: 44px; padding: 0 14px; }
+.profile-note { font-size: 12px; }
+.timeline-item small, .notification-row small, .detail-created { font-size: 12px; }
+.bottom-nav .nav-label { font-size: 11px; }
+@media (max-width:359px) { .bottom-nav .nav-label { font-size: 10px; letter-spacing: -.2px; } }
+.guide-step-number { color: var(--text); }
+
+/* Targets: 44 px for every control a finger meets. */
+@media (max-width:760px) {
+  .topbar-back, .notifications-button, .topbar-spacer { width: 44px; height: 44px; padding: 10px; }
+  .topbar { grid-template-columns: 44px minmax(0,1fr) 44px; }
+}
+.text-link, .section-heading .text-link { min-height: 44px; }
+.guide-dismiss { width: 44px; height: 44px; }
+.section-heading .btn, .unit-card .btn, .rule-card .btn { min-height: 44px; }
+
+/* Notifications keep their line breaks; long values wrap, never cut. */
+.notification-row small:first-of-type { white-space: pre-line; }
+
+/* Text fields: no resize grips on phones, the field grows with the sheet instead. */
+.field textarea, .comment-form textarea { resize: none; }
+
+/* Links in a box read in the text face, not a typewriter. */
+.code-box, .code-box.invite-url { font-family: inherit; font-size: 14px; font-weight: 500; line-height: 1.5; letter-spacing: 0; word-break: break-all; padding: 14px 16px; margin: 0; }
+.invite-lead { font-size: 16px; font-weight: 650; line-height: 1.4; text-align: center; }
+.invite-lead .muted { display: inline-block; margin-top: 4px; font-size: 14px; font-weight: 400; }
+
+/* Disclosure: a chevron that turns. */
+.invite-other summary { list-style: none; justify-content: space-between; gap: 12px; }
+.invite-other summary::-webkit-details-marker { display: none; }
+.invite-other summary::after { content: ''; flex: none; width: 8px; height: 8px; margin-right: 4px; border-right: 1.7px solid var(--muted); border-bottom: 1.7px solid var(--muted); transform: translateY(-2px) rotate(45deg); transition: transform var(--motion-surface) var(--ease); }
+.invite-other[open] summary::after { transform: translateY(2px) rotate(-135deg); }
+
+/* A toast never covers an open sheet: it drops from the top instead. */
+body.modal-open .toast { top: calc(12px + var(--safe-top)); bottom: auto; }
+body.modal-open .toast { animation-name: toast-drop; }
+@keyframes toast-drop { from { opacity: 0; transform: translate(-50%, -12px) scale(.96); } to { opacity: 1; transform: translate(-50%, 0); } }
+
+/* Tab change: only what is under the strip moves; the strip's pill settles in place. */
+#root[data-anim="tab"] .apartment-tabs ~ * { animation: fade-up var(--motion-surface) var(--ease-enter) both; }
+#root[data-anim="tab"] .apartment-tabs ~ :nth-child(n) { animation-delay: 0ms; }
+#root[data-anim="tab"] .apartment-tabs .segment.selected { animation: seg-in var(--motion-surface) var(--spring) both; }
+@keyframes seg-in { from { transform: scale(.94); opacity: .6; } to { transform: none; opacity: 1; } }
+#root[data-anim="tab"] :is(.records-list, .meters-grid, .people-list, .meter-history, .units-grid) > * { animation: fade-up var(--motion-surface) var(--ease-enter) both; animation-delay: calc(60ms + var(--i, 0) * 40ms); }
+@media (prefers-reduced-motion:reduce) {
+  #root[data-anim="tab"] *, body.modal-open .toast { animation: none !important; }
+  .segmented { transition: none; }
+}
+/* Inside sections and cards: 12 between parts, 16 around notices. */
+.notice { margin: 16px 0; }
+.section > :not(.section-heading) + * { margin-top: 12px; }
+.section > .notice:last-child { margin-bottom: 0; }
+.owners-section .people-list { margin-bottom: 0; }
+.owners-hint { margin: 0 2px; }
+.form-section-title { margin: 8px 0 0; }
+.detail-body > .muted, .detail-body > .detail-created { margin-top: 16px; font-size: 12px; }
+.record-end .badge, .record-card .badge { font-size: 12px; }
+@media (max-width:600px) { .record-meta { font-size: 12px; } .record-end .badge { font-size: 12px; } }
+.stat-label { font-size: 12px; }
+.welcome-about { min-height: 44px; }
+.btn.btn-icon { min-width: 44px; min-height: 44px; }
+.sidebar-note small { font-size: 12px; }
+.notification-row small:last-child, .meter-input small, .meter-field span small, .meter-row small { font-size: 12px; }
+@media (max-width:760px) {
+  .page-heading > div:first-child { flex: none; }
+  .heading-actions > .btn { width: auto; height: auto; }
+}
+.lease-selector > .lease-copy { color: var(--text); font-size: inherit; }
+.lease-card .contract-grid { margin-top: 0; }
+.lease-note { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; line-height: 1.5; color: var(--muted); }
+.unit-card .split { min-height: 0; }
+.unit-card { gap: 8px; }
+.unit-card > .btn, .unit-card > .unit-current { margin-top: 4px; }
+.person-copy b { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.cover-change { min-width: 44px; justify-content: center; }
+.role-card small { font-size: 12px; }
+@media (max-width:330px) { .contract-grid, .lease-card .contract-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 16px 12px; } }
+.stat-label { overflow-wrap: anywhere; hyphens: auto; }
+.modal .contract-grid { margin-top: 0; }
+@media (max-width:760px) { .modal-header { margin-bottom: 8px; } }
+/* Role cards: text gets the room, lines break where the words do. */
+.role-card { gap: 16px; min-height: 148px; }
+.role-card > img { width: 112px; }
+.role-card strong { font-size: 19px; line-height: 1.25; text-wrap: balance; }
+.role-card small { margin-top: 8px; font-size: 13px; text-wrap: pretty; }
+@media (max-width:360px) { .role-card > img { width: 92px; } .role-card strong { font-size: 17px; } .role-card small { font-size: 12px; } }
+.desktop-footer { font-size: 12px; color: var(--muted); }
+@media (min-width:761px) { .modal-header { margin-bottom: 16px; padding-bottom: 16px; } }
+@media (min-width:640px) { .quick-grid { grid-template-columns: repeat(4, minmax(0,1fr)); } }
+.app-error { margin: 15vh 16px; border: 1px solid var(--line); border-radius: var(--radius-lg); }
+@media (min-width:532px) { .app-error { margin: 15vh auto; } }
+.app-error .btn { min-height: 44px; }

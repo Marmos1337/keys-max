@@ -6,7 +6,7 @@ export function coverFields(a = {}) {
     const stock = ['living','owner','room'].includes(a.photo) ? a.photo : 'living';
     const stockArt = stock === 'owner' ? 'house' : stock;
     const current = a.cover_url || '/art/' + stockArt + '.webp';
-    const options = [...(a.id ? [['current', 'Оставить текущую обложку']] : []), ['living', 'Стандартная иллюстрация: гостиная'], ['room', 'Стандартная иллюстрация: комната'], ['owner', 'Стандартная иллюстрация: дом'], ['upload', 'Использовать загруженную фотографию']];
+    const options = [...(a.id ? [['current', 'Текущая обложка']] : []), ['living', 'Иллюстрация: гостиная'], ['room', 'Иллюстрация: комната'], ['owner', 'Иллюстрация: дом'], ['upload', 'Своё фото']];
     return `<section class="cover-editor" data-cover-editor data-current-src="${esc(current)}" data-current-id="${esc(a.cover_id || '')}" data-stock="${esc(stock)}">
         <div class="cover-editor-title"><h3>Фото квартиры</h3><span>Обложка карточки</span></div>
         <img class="cover-preview" data-cover-preview src="${esc(current)}" alt="Предпросмотр обложки квартиры">

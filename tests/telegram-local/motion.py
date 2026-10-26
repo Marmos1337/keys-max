@@ -29,7 +29,7 @@ with sync_playwright() as p:
     check('success ring pops', anim(page, '.success-ring') == 'ring-pop')
     page.wait_for_timeout(200); page.screenshot(path=f'{OUT}/motion-success-2.png'); page.wait_for_timeout(500); page.screenshot(path=f'{OUT}/motion-success-3.png')
     page.wait_for_timeout(700); page.click('[data-act=copy-code]'); page.wait_for_timeout(40)
-    check('toast springs in', anim(page, '.toast') == 'toast-in')
+    check('toast springs in (from the top while a sheet is open)', anim(page, '.toast') in ('toast-in', 'toast-drop'))
     page.click('.modal [data-act=close-modal]'); page.wait_for_timeout(40)
     check('sheet slides down on close', page.locator('.modal-overlay.closing').count() == 1)
     page.wait_for_timeout(400); check('closed sheet is removed', page.locator('.modal-overlay').count() == 0)

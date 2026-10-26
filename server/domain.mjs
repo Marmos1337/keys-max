@@ -53,7 +53,7 @@ export function notifyOther(db, u, ctx, title, recordId, visibility = 'shared', 
         const r=decode(db.get('SELECT * FROM records WHERE id=?',recordId)),p=r?.payload||{};
         detail=`${u.name}: ${title}`;
         if(p.description) detail+='\n'+p.description.slice(0,700);
-        if(r?.kind==='charge') detail+=`\nНачислено: ${formatMoney(p.amount)}. Подтверждено: ${formatMoney(p.confirmed)}. До ${humanDate(p.due)}.`;
+        if(r?.kind==='charge') detail+=`\nНачислено: ${formatMoney(p.amount)}. Подтверждено: ${formatMoney(p.confirmed)}. Оплатить до ${humanDate(p.due)}`;
         if(r?.kind==='visit') detail+='\n'+p.reason+'\n'+new Date(p.start).toLocaleString('ru-RU',{timeZone:process.env.TZ||'Europe/Moscow'});
         if(r?.kind==='reading') detail+='\n'+(p.values||[]).map(v=>`${v.label}: ${v.value/1000} ${v.unit}`).join('\n');
         if(r?.kind==='purchase') detail+='\n'+formatMoney(p.amount);
@@ -243,8 +243,8 @@ export function joinInvite(db,u,code) {
         db.run("UPDATE records SET status='proposed',payload=?,version=version+1,updated_at=? WHERE id=?",JSON.stringify(r.payload),nowISO(),r.id);
         pushNotification(db,u.id,'Подтвердите предстоящее посещение','До вашего присоединения жильцы согласовали визит. Проверьте время и подтвердите его или предложите другое.',r.id);
     }
-    event(db,u,l,u.name+' присоединился к аренде');
-    notifyOther(db,u,{lease:l,apartment:a,owner:false},'Новый участник аренды',null,'shared',u.name+' присоединился'+(meta?.label?` по ссылке «${meta.label}»`:'')+'. Начисления общие для этой группы, а не отдельная полная сумма каждому.',{target:'l_'+l.id});
+    event(db,u,l,'В аренде новый жилец: '+u.name);
+    notifyOther(db,u,{lease:l,apartment:a,owner:false},'Новый участник аренды',null,'shared',u.name+' теперь в аренде'+(meta?.label?` — по ссылке «${meta.label}»`:'')+'. Начисления общие для этой группы, а не отдельная полная сумма каждому.',{target:'l_'+l.id});
     return {apartment_id:a.id,lease_id:l.id};
 }
 // Owners vote as one side: any owner's answer counts for all of them and is stored
@@ -800,9 +800,9 @@ export function generateRecurring(db,config,time=Date.now()) {
         if(l.start>today||l.end<today) continue;
         const meterDue=Number(dueDate(ym,l.meter_day).slice(8));
         const pending=visibleMeters(db,l).some(m=>!db.get('SELECT 1 FROM meter_values WHERE meter_id=? AND period=?',m.id,ym));
-        if(l.meters_enabled&&pending&&[meterDue-3,meterDue].includes(day)) for(const uid of [...managerIds(db,l.apartment_id),...memberIds(db,l.id)]) pushNotification(db,uid,'Пора передать показания',`${l.apartment_title} · ${unitName(db,l)}\nЗа ${monthText(ym)}, до ${humanDate(dueDate(ym,l.meter_day))}.`,null,`meter:${l.id}:${uid}:${today}`,'reminders',{target:'m_'+l.id});
+        if(l.meters_enabled&&pending&&[meterDue-3,meterDue].includes(day)) for(const uid of [...managerIds(db,l.apartment_id),...memberIds(db,l.id)]) pushNotification(db,uid,'Пора передать показания',`${l.apartment_title} · ${unitName(db,l)}\nЗа ${monthText(ym)}, до ${humanDate(dueDate(ym,l.meter_day))}`,null,`meter:${l.id}:${uid}:${today}`,'reminders',{target:'m_'+l.id});
         const endDays=Math.ceil((Date.parse(end)-Date.parse(today))/86400000);
-        if([30,7,1,0].includes(endDays)) for(const uid of [...managerIds(db,l.apartment_id),...memberIds(db,l.id)]) pushNotification(db,uid,'Срок аренды заканчивается',`${l.apartment_title} · ${unitName(db,l)}\nДата окончания: ${humanDate(end)}.`,null,`lease-end:${l.id}:${uid}:${today}`,'reminders',{target:'l_'+l.id});
+        if([30,7,1,0].includes(endDays)) for(const uid of [...managerIds(db,l.apartment_id),...memberIds(db,l.id)]) pushNotification(db,uid,'Срок аренды заканчивается',`${l.apartment_title} · ${unitName(db,l)}\nДата окончания: ${humanDate(end)}`,null,`lease-end:${l.id}:${uid}:${today}`,'reminders',{target:'l_'+l.id});
     }
     for(const r of db.all("SELECT * FROM records WHERE kind IN ('charge','visit') AND status NOT IN ('paid','cancelled','completed')").map(decode)) {
         const l=db.get('SELECT * FROM leases WHERE id=?',r.lease_id);if(l.status==='ended') continue;
@@ -811,10 +811,10 @@ export function generateRecurring(db,config,time=Date.now()) {
         if(r.kind==='charge'&&['pending','partial','claimed'].includes(r.status)) {
             const delta=Math.round((Date.parse(r.payload.due)-Date.parse(today))/86400000);remind=[3,1,0,-1,-7].includes(delta);
             title=r.status==='claimed'?'Ожидается подтверждение оплаты':delta<0?'Проверьте просроченный платёж':'Скоро срок платежа';
-            detail=`${r.title}\nОсталось подтвердить: ${formatMoney(r.payload.amount-r.payload.confirmed)}. Срок: ${humanDate(r.payload.due)}.`;
+            detail=`${r.title}\nОсталось подтвердить: ${formatMoney(r.payload.amount-r.payload.confirmed)}. Срок: ${humanDate(r.payload.due)}`;
         }
         if(r.kind==='visit'&&r.status==='accepted') {const diff=Date.parse(r.payload.start)-time;remind=diff>0&&diff<=24*3600000;title='Скоро согласованное посещение';detail=`${r.payload.reason}\n${new Date(r.payload.start).toLocaleString('ru-RU',{timeZone:config.timezone})} (${config.timezone})`;}
         if(remind) for(const uid of [...managerIds(db,a),...memberIds(db,l.id)]) pushNotification(db,uid,title,`${detail}\n${a.title} · ${unitName(db,l)}`,r.id,`due:${r.id}:${r.version}:${uid}:${today}`,'reminders');
     }
 }
-const formatMoney=n=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB'}).format(n/100);
+const formatMoney=n=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:n%100?2:0}).format(n/100);

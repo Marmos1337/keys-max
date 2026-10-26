@@ -1,9 +1,10 @@
 // People of a lease and the owner's invite links. One link admits one person,
 // so two tenants means two links; each row shows where that link stands.
-import { esc, icon, button, notice, date } from './utils.js';
+import { esc, icon, button, notice, date, days } from './utils.js';
 import { tenantIds } from './rental-ui.js';
 
-export const inviteStatusText = { pending: 'Ждёт', opened: 'Открыл ссылку', accepted: 'Принял', expired: 'Истекла', revoked: 'Отозвана' };
+// Statuses of a link (ссылка): said the same way in rows, chips and sheets.
+export const inviteStatusText = { pending: 'Не открыта', opened: 'Открыта', accepted: 'Принята', expired: 'Истекла', revoked: 'Отозвана' };
 const statusTone = { pending: 'amber', opened: 'blue', accepted: 'green', expired: 'neutral', revoked: 'neutral' };
 const chip = (status, text) => `<span class="badge ${statusTone[status] === 'green' ? 'green' : statusTone[status] === 'amber' ? 'amber' : statusTone[status] === 'blue' ? 'blue' : 'neutral'}">${esc(text || inviteStatusText[status])}</span>`;
 const initial = name => esc(String(name || '?').trim()[0] || '?');
@@ -13,8 +14,8 @@ export function leaseInvites(d, l) { return (d.invites || []).filter(i => i.leas
 function inviteRow(i) {
     const title = i.label ? esc(i.label) : 'Ссылка-приглашение';
     const sub = i.status === 'accepted' ? `${esc(i.accepted_name || 'Жилец')} · ${date(i.accepted_at || i.created_at)}`
-        : i.status === 'pending' ? `Отправьте ссылку · действует до ${date(i.expires)}`
-        : i.status === 'opened' ? `Открыл в боте ${date(i.opened_at)}, ещё не подтвердил`
+        : i.status === 'pending' ? `Действует до ${date(i.expires)}`
+        : i.status === 'opened' ? `Открыта в боте ${date(i.opened_at)}, ещё не подтверждена`
         : i.status === 'expired' ? 'Срок вышел — создайте новую ссылку' : 'Ссылка больше не работает';
     return `<button type="button" class="ui-row person-row invite-row" data-act="invite-manage" data-id="${esc(i.id)}" data-status="${i.status}"><span class="person-avatar invite-avatar" data-status="${i.status}">${icon(i.status === 'accepted' ? 'check' : 'link', 18)}</span><span class="person-copy"><b>${title}</b><small>${sub}</small></span>${chip(i.status)}${icon('arrow', 16)}</button>`;
 }
@@ -24,7 +25,7 @@ export function peopleSection(s, l) {
     const d = s.data, ids = tenantIds(l), members = d.members || [];
     const people = ids.map(id => {
         const p = d.people.find(x => x.id === id), joined = members.find(m => m.lease_id === l.id && m.user_id === id)?.joined_at;
-        return `<div class="ui-row person-row"><span class="person-avatar">${initial(p?.name)}</span><span class="person-copy"><b>${esc(p?.name || 'Жилец')}</b><small>${joined ? 'В аренде с ' + date(joined, { year: 'numeric' }) : 'Участник аренды'}</small></span>${chip('accepted', 'Жилец')}</div>`;
+        return `<div class="ui-row person-row"><span class="person-avatar">${initial(p?.name)}</span><span class="person-copy"><b>${esc(p?.name || 'Жилец')}${id === d.user.id ? ' <small class="you">· это вы</small>' : ''}</b><small>${joined ? 'В аренде с ' + date(joined, { year: 'numeric' }) : 'Участник аренды'}</small></span></div>`;
     }).join('');
     const invites = leaseInvites(d, l).filter(i => i.status !== 'accepted');
     const rows = people + invites.map(inviteRow).join('');
@@ -32,7 +33,7 @@ export function peopleSection(s, l) {
     const body = rows ? `<div class="surface panel people-list">${rows}</div>`
         : `<div class="surface people-empty"><span class="people-empty-art" aria-hidden="true">${icon('invite', 30)}</span><b>Пока никого</b><p>Отправьте каждому жильцу свою ссылку. Двое жильцов — две ссылки. Человек откроет её в Telegram или MAX и подтвердит одной кнопкой.</p></div>`;
     const action = canInvite ? button(icon('invite', 19) + (ids.length || invites.length ? ' Пригласить ещё' : ' Пригласить жильца'), 'invite', '', ids.length || invites.length ? 'secondary wide' : 'primary wide') : '';
-    return `<section class="section people-section"><div class="section-heading"><h2>Жильцы</h2>${ids.length ? `<span class="section-count">${ids.length}</span>` : ''}</div>${body}${action}</section>`;
+    return `<section class="section people-section"><div class="section-heading"><h2>Жильцы${ids.length ? ` <span class="section-count">${ids.length}</span>` : ''}</h2></div>${body}${action}</section>`;
 }
 
 export function inviteCreateForm(l, unitTitle) {
@@ -48,14 +49,13 @@ const step = (n, title, text) => `<div class="invite-step"><span class="invite-s
 export function inviteResult(invite, { inHost, platformLabel, renewed = false, kind = 'tenant' } = {}) {
     const owner = kind === 'owner';
     const otherKey = invite.platform === 'telegram' ? 'max' : 'telegram', other = invite.links?.[otherKey], otherName = otherKey === 'max' ? 'MAX' : 'Telegram';
-    const who = invite.label ? `для «${esc(invite.label)}»` : owner ? 'для одного совладельца' : 'для одного жильца';
     return `<div class="form-stack invite-result" data-invite-result>
         <div class="invite-success" aria-hidden="true"><span class="success-ring">${icon('check', 30)}</span></div>
-        <p class="invite-lead">${renewed ? 'Новая ссылка готова, старая больше не работает.' : 'Ссылка готова'} — ${who}, действует ${invite.days || 7} дней.</p>
+        <p class="invite-lead">${renewed ? 'Новая ссылка готова' : 'Ссылка готова'}${invite.label ? ` · «${esc(invite.label)}»` : ''}<br><span class="muted">${renewed ? 'Старая больше не работает. ' : ''}Одна ссылка — ${owner ? 'для одного совладельца' : 'для одного жильца'}, действует ${days(invite.days || 7)}.</span></p>
         <div class="code-box invite-url" data-invite-url>${esc(invite.url)}</div>
         <div class="action-row stacked">${button(icon('send', 18) + (inHost ? ` Отправить в ${esc(platformLabel)}` : ' Поделиться'), 'share-invite', '', 'primary wide')}${button(icon('copy', 18) + ' Скопировать ссылку', 'copy-code', '', 'secondary wide')}</div>
         ${other ? `<details class="invite-other"><summary>${owner ? 'Человек пользуется' : 'Жилец пользуется'} ${otherName}?</summary><p class="small-note">Отправьте ему эту ссылку — она ведёт в бота Ключей в ${otherName}. Сработает только одна из двух: первая принятая.</p><div class="code-box invite-url">${esc(other)}</div>${button(icon('copy', 18) + ' Скопировать ссылку для ' + otherName, 'copy-other-link', '', 'ghost wide')}</details>` : ''}
-        ${notice(owner ? 'Человек откроет ссылку → бот покажет квартиру → он нажмёт «Стать совладельцем». Вы получите уведомление, а в «Совладельцах» появится его имя.' : 'Жилец откроет ссылку → бот покажет квартиру → он нажмёт «Принять приглашение». Вы получите уведомление, а в разделе «Жильцы» статус сменится на «Принял».', 'blue', 'info')}
+        ${notice(owner ? 'Человек откроет ссылку → бот покажет квартиру → он нажмёт «Стать совладельцем». Вы получите уведомление, а в «Совладельцах» появится его имя.' : 'Жилец откроет ссылку → бот покажет квартиру → он нажмёт «Принять приглашение». Вы получите уведомление, а в разделе «Жильцы» появится его имя.', 'blue', 'info')}
         ${owner ? '' : button(icon('invite', 18) + ' Пригласить ещё одного жильца', 'invite', '', 'ghost wide')}
     </div>`;
 }
@@ -64,7 +64,7 @@ export function inviteManage(i) {
     const lines = [['Статус', inviteStatusText[i.status]], ['Создана', date(i.created_at, { year: 'numeric' })]];
     if (['pending', 'opened'].includes(i.status)) lines.push(['Действует до', date(i.expires, { year: 'numeric' })]);
     if (i.opened_at) lines.push(['Открыта в боте', date(i.opened_at)]);
-    if (i.status === 'accepted') lines.push(['Принял', esc(i.accepted_name || 'Жилец')]);
+    if (i.status === 'accepted') lines.push(['Кто принял', esc(i.accepted_name || 'Жилец')]);
     const active = ['pending', 'opened'].includes(i.status);
     return `<div class="form-stack"><dl class="contract-grid">${lines.map(([k, v]) => `<div class="contract-row"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
         ${i.status === 'opened' ? notice('Жилец открыл ссылку, но ещё не нажал «Принять приглашение». Напомните ему — кнопка в чате с ботом Ключей.', 'blue') : ''}

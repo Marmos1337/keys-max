@@ -57,7 +57,7 @@ with sync_playwright() as p:
         owner.click('.modal [data-act=close-modal]'); owner.wait_for_timeout(300)
     owner.reload(); owner.wait_for_selector('.app-body'); owner.click('[data-act=nav][data-page=apartments] >> visible=true >> nth=0'); owner.wait_for_selector('.invite-row')
     rows = owner.inner_text('.people-section')
-    check('owner: both links listed as «Ждёт»', 'Маша' in rows and 'Петя' in rows and rows.count('Ждёт') == 2, rows)
+    check('owner: both links listed as «Не открыта»', 'Маша' in rows and 'Петя' in rows and rows.count('Не открыта') == 2, rows)
     owner.screenshot(path=f'{OUT}/invite-04-two-pending.png', full_page=True)
 
     # Tenant 1 (no username) opens the link: Telegram sends /start join_…, the server polls it.
@@ -68,7 +68,7 @@ with sync_playwright() as p:
     btn = m and m['reply_markup']['inline_keyboard'][0][0]
     check('bot: preview has «Принять приглашение»', btn and btn.get('callback_data') == 'join|' + code1, btn)
     owner.reload(); owner.wait_for_selector('.app-body'); owner.click('[data-act=nav][data-page=apartments] >> visible=true >> nth=0'); owner.wait_for_selector('.invite-row')
-    check('owner: status «Открыл ссылку» after the tenant opened it', 'Открыл ссылку' in owner.inner_text('.people-section'))
+    check('owner: status «Открыта» after the tenant opened it', 'Открыта в боте' in owner.inner_text('.people-section'))
     push(press(900001, 'join|' + code1))
     done = wait_message(900001, lambda b: 'Готово' in b.get('text', ''))
     check('bot: confirmation after accepting', done is not None)
@@ -108,7 +108,7 @@ with sync_playwright() as p:
 
     owner.reload(); owner.wait_for_selector('.app-body'); owner.click('[data-act=nav][data-page=apartments] >> visible=true >> nth=0'); owner.wait_for_selector('.people-section')
     people = owner.inner_text('.people-section')
-    check('owner: both tenants listed as members, no pending links', 'Маша' in people and 'Петя' in people and 'Ждёт' not in people, people)
+    check('owner: both tenants listed as members, no pending links', 'Маша' in people and 'Петя' in people and 'Не открыта' not in people, people)
     owner.screenshot(path=f'{OUT}/invite-08-owner-two-tenants.png', full_page=True)
 
     # Outside a messenger: a plain browser with ?invite=… shows both bots.
