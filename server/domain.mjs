@@ -54,7 +54,7 @@ export function notifyOther(db, u, ctx, title, recordId, visibility = 'shared', 
     const place = `${ctx.apartment.title} · ${unitName(db,ctx.lease)}`;
     if(!detail&&recordId) {
         const r=decode(db.get('SELECT * FROM records WHERE id=?',recordId)),p=r?.payload||{};
-        detail=`${u.name}: ${title}`;
+        detail=`${whoName(u)}: ${title}`;
         if(p.description) detail+='\n'+p.description.slice(0,700);
         if(r?.kind==='charge') detail+=`\nНачислено: ${formatMoney(p.amount)}. Подтверждено: ${formatMoney(p.confirmed)}. Оплатить до ${humanDate(p.due)}`;
         if(r?.kind==='visit') detail+='\n'+p.reason+'\n'+new Date(p.start).toLocaleString('ru-RU',{timeZone:process.env.TZ||'Europe/Moscow'});
@@ -62,7 +62,7 @@ export function notifyOther(db, u, ctx, title, recordId, visibility = 'shared', 
         if(r?.kind==='purchase') detail+='\n'+formatMoney(p.amount);
         if(r?.kind==='ticket'&&p.result) detail+='\nРезультат: '+p.result;
     }
-    for (const target of targets) pushNotification(db,target,title,`${detail || `${u.name}: ${title}`}\n${place}`,recordId,null,'events',extra);
+    for (const target of targets) pushNotification(db,target,title,`${detail || `${whoName(u)}: ${title}`}\n${place}`,recordId,null,'events',extra);
 }
 export function attach(db, u, lease, recordId, ids) { for (const id of V.attachmentIds(ids)) {
     const f = db.get('SELECT * FROM files WHERE id=?', id);
@@ -442,7 +442,7 @@ export function actionRecord(db, u, id, b) {
             const claim={id:randomUUID(),amount,method:method(),paid_on:paidOn(),note:V.text(b.note,'Комментарий',1000,true),at:nowISO(),user_id:u.id,for_user_id:target,files:fileIds};
             p.claims.push(claim);
             const whose=target===u.id?'':' за '+(db.get('SELECT name FROM users WHERE id=?',target)?.name||'другого жильца');
-            label=`${u.name}: ${claim.method==='cash'?'передал наличными':'перевёл'} ${formatMoney(claim.amount)}${whose} — подтвердите получение`;
+            label=`${whoName(u)}: ${claim.method==='cash'?'передал наличными':'перевёл'} ${formatMoney(claim.amount)}${whose} — подтвердите получение`;
         } else if(act==='withdraw') {
             tenant();
             const claim=p.claims.find(c=>c.id===b.claim_id);
@@ -450,7 +450,7 @@ export function actionRecord(db, u, id, b) {
             if(claim.user_id!==u.id) fail(403,'Отменить можно только свою отметку об оплате.');
             p.claims=p.claims.filter(c=>c.id!==claim.id);
             p.withdrawn=[...(p.withdrawn||[]),{...claim,withdrawn_at:nowISO()}];
-            label=`${u.name}: отметка об оплате ${formatMoney(claim.amount)} отменена`;
+            label=`${whoName(u)}: отметка об оплате ${formatMoney(claim.amount)} отменена`;
         } else if(act==='confirm'||act==='reject') {
             owner();
             const claim=b.claim_id?p.claims.find(c=>c.id===b.claim_id):p.claims[0];
@@ -570,7 +570,9 @@ export function updateProfile(db, u, b) { const name = V.text(b.name, 'Имя', 
         s[key] = b.settings[key]; if (b.settings?.tax_status !== undefined)
     s.tax_status = V.choice(b.settings.tax_status, ['not_set', 'individual', 'self_employed', 'entrepreneur']); if(b.settings?.theme!==undefined)s.theme=V.choice(b.settings.theme,['auto','light','dark']); if(name!==u.name)s.name_custom=true; db.run('UPDATE users SET name=?,role=?,settings=? WHERE id=?', name, role, JSON.stringify(s), u.id); return safeUser(db.get('SELECT * FROM users WHERE id=?', u.id)); }
 
-export const monthText = ym => new Date(ym+'-01T12:00:00Z').toLocaleDateString('ru-RU',{month:'long',year:'numeric',timeZone:'UTC'});
+export const monthText = ym => new Date(ym+'-01T12:00:00Z').toLocaleDateString('ru-RU',{month:'long',year:'numeric',timeZone:'UTC'}).replace(/\s*г\.$/,'');
+// Two tenants may share a first name, so history and notifications add the messenger handle.
+export const whoName = u => u.handle ? `${u.name} @${u.handle}` : u.name;
 export const humanDate = value => new Date(value.length===10?value+'T12:00:00Z':value).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});
 export function visibleMeters(db,lease,{activeOnly=true}={}) {
     return db.all(`SELECT * FROM meters WHERE (lease_id=? OR (scope='apartment' AND apartment_id=?)) ${activeOnly?'AND active=1':''} ORDER BY scope,CASE kind WHEN 'cold_water' THEN 0 WHEN 'hot_water' THEN 1 WHEN 'electricity' THEN 2 WHEN 'gas' THEN 3 WHEN 'heating' THEN 4 ELSE 5 END,label,id`,lease.id,lease.apartment_id);
