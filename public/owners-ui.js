@@ -27,8 +27,8 @@ export function ownersSection(s, a) {
 const step = (n, title, text) => `<div class="invite-step"><span class="invite-step-n">${n}</span><span><b>${title}</b><small>${text}</small></span></div>`;
 export function ownerInviteForm(a) {
     return `<form class="form-stack" data-form="owner-invite-create" data-apartment="${esc(a.id)}">
-        <div class="invite-steps">${step(1, 'Создайте ссылку', 'Одна ссылка — для одного человека.')}${step(2, 'Отправьте её', 'Например, маме в Telegram или MAX.')}${step(3, 'Человек подтверждает', 'Бот покажет квартиру, он нажмёт «Стать совладельцем».')}</div>
-        <label class="field"><span>Кого приглашаете (необязательно)</span><input name="label" type="text" maxlength="60" autocomplete="off" placeholder="Например, Мама"></label>
+        <div class="invite-steps">${step(1, 'Создайте ссылку', 'Одна ссылка — для одного человека.')}${step(2, 'Отправьте её', 'Например, второму собственнику в Telegram или MAX.')}${step(3, 'Человек подтверждает', 'Бот покажет квартиру, он нажмёт «Стать совладельцем».')}</div>
+        <label class="field"><span>Кого приглашаете (необязательно)</span><input name="label" type="text" maxlength="60" autocomplete="off" placeholder="Например, Екатерина"></label>
         ${notice(`Совладелец «${esc(a.title)}» видит и меняет всё по этой квартире: аренду и условия, жильцов и приглашения, счётчики, платежи, заявки и документы. Уведомления приходят и ему. Удалить квартиру и убрать совладельца можете только вы.`, 'blue', 'shield')}
         <div class="form-error" role="alert"></div>
         <button type="submit" class="btn primary wide">${icon('link', 18)} Создать ссылку</button></form>`;

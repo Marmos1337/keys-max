@@ -11,7 +11,7 @@ import { welcome, roleView, shell, pageView, model, actionsFor } from './views.j
 import { baselineForm } from './meters-ui.js';
 import { ownerInviteForm, ownerInviteManage, coOwnerManage, leaveForm, ownerInvitePreview, ownerInviteProblem, coOwnerWelcome } from './owners-ui.js';
 import { paymentFields } from './payments-ui.js';
-import { collectionContext, collectionSheet, updateCollection, utilitiesSheet, utilitiesEditSheet, utilitiesCancelSheet, utilitiesVersions, receiveSheet, splitPreview, existingUtilitiesNote, markSeen, freshUtilities, apartmentDebts, isDraft, utilityGroups, monthWord } from './cash-ui.js';
+import { collectionContext, collectionSheet, updateCollection, utilitiesSheet, utilitiesEditSheet, utilitiesCancelSheet, utilitiesVersions, receiveSheet, splitPreview, existingUtilitiesNote, markSeen, apartmentDebts, isDraft, utilityGroups, monthWord, waitFor, groupDigits, bills } from './cash-ui.js';
 import { peopleSection, inviteCreateForm, inviteResult, inviteManage, invitePreview, inviteProblem, inviteOutside, joinedWelcome } from './invites-ui.js';
 import { uuid, esc, icon, button, notice, field, textarea, select, uploadField, localISO, today, parseAmount, money, number, date, categoryNames, kindNames } from './utils.js';
 const root = document.querySelector('#root'), modalRoot = document.querySelector('#modal-root'), toastRoot = document.querySelector('#toast-root');
@@ -350,9 +350,22 @@ async function pillAction(el, give) {
         const body = give ? { action: 'claim', version, method: 'cash' } : { action: 'withdraw', version, claim_id: el.dataset.claimId };
         const r = await post('/records/' + encodeURIComponent(id) + '/action', body, el.dataset.key);
         const i = state.data.records.findIndex(x => x.id === r.id); if (i >= 0) state.data.records[i] = r;
-        root.querySelectorAll(`.cash-pill[data-pill="${CSS.escape(id)}"]`).forEach(x => setPill(x, give ? 'claimed' : 'open'));
-        toast(give ? 'Отметили. Собственник подтвердит, когда получит' : 'Отметка отменена');
-        setTimeout(() => reload().catch(() => render()), 260);
+        // Both faces learn the new version and claim at once, so a quick «Отменить» (or a second
+        // «Отдал») before the reload sends what the server now expects.
+        const claims = r.payload?.claims || (r.payload?.claim ? [r.payload.claim] : []);
+        const claim = claims.filter(c => c.user_id === state.data.user.id && (c.for_user_id ?? c.user_id) === state.data.user.id).at(-1);
+        root.querySelectorAll(`.cash-pill[data-pill="${CSS.escape(id)}"]`).forEach(x => {
+            x.querySelectorAll('.cash-face').forEach(face => { face.dataset.version = r.version; });
+            const giveFace = x.querySelector('.cash-give'), doneFace = x.querySelector('.cash-done');
+            if (giveFace) giveFace.dataset.key = `claim-${id}-v${r.version}`;
+            if (doneFace) { doneFace.dataset.claimId = claim?.id || ''; doneFace.dataset.key = `withdraw-${claim?.id || id}-v${r.version}`; }
+            setPill(x, give ? 'claimed' : 'open');
+        });
+        const a = state.data.apartments.find(x => x.id === r.apartment_id);
+        toast(give ? `Отметили, ${waitFor(state.data, a)}` : 'Отметка отменена');
+        // The reload re-renders the page: put focus back on the same pill.
+        const focused = document.activeElement?.closest?.('.cash-pill') === pill;
+        setTimeout(() => reload().then(() => { if (focused) root.querySelector(`.cash-pill[data-pill="${CSS.escape(id)}"] .cash-face:not([inert])`)?.focus({ preventScroll: true }); }).catch(() => render()), 260);
     } catch (e) {
         toast(e.message, true);
         if (e.status === 409) reload().catch(() => {});
@@ -363,13 +376,26 @@ function setPill(pill, next) {
     pill.querySelectorAll('.cash-face').forEach(face => { const on = face.classList.contains(next === 'open' ? 'cash-give' : 'cash-done'); face.toggleAttribute('inert', !on); face.setAttribute('aria-hidden', on ? 'false' : 'true'); face.tabIndex = on ? 0 : -1; });
     pill.querySelector(next === 'open' ? '.cash-give' : '.cash-done')?.focus({ preventScroll: true });
 }
+// The month is already entered: the save buttons give their place to a warning and «Открыть запись».
+// Both faces share one grid cell, so the sheet keeps its height.
+function showExisting(form, html) {
+    const foot = form.querySelector('.sheet-foot'), box = form.querySelector('[data-utilities-exists]');
+    if (!foot || !box) return;
+    box.innerHTML = html;
+    foot.dataset.foot = html ? 'exists' : 'new';
+    box.toggleAttribute('inert', !html);
+    form.querySelector('.foot-new')?.toggleAttribute('inert', !!html);
+}
 function checkUtilitiesMonth(form) {
     if (!form || form.dataset.quick) return;
-    const a = state.data.apartments.find(x => x.id === form.dataset.apartment), box = form.querySelector('[data-utilities-exists]'), input = form.querySelector('[data-utilities-month]');
-    if (!a || !box || !input) return;
+    const a = state.data.apartments.find(x => x.id === form.dataset.apartment), input = form.querySelector('[data-utilities-month]');
+    if (!a || !input) return;
     let month = ''; try { month = parseDisplayDate(input.value, 'month'); } catch { /* typed halfway */ }
-    box.innerHTML = month ? existingUtilitiesNote(state.data, a, month) : '';
-    form.querySelectorAll('button[type=submit]').forEach(b => { b.disabled = !!box.innerHTML; });
+    showExisting(form, month ? existingUtilitiesNote(state.data, a, month) : '');
+}
+// Several flats with cash debts: ask which one first instead of guessing.
+function collectChooser(list) {
+    return `<div class="form-stack"><p class="small-note">У жильцов есть наличные в нескольких квартирах. Где забрали?</p><div class="choice-list">${list.map(({ a, rows }) => `<button type="button" class="ui-row choice-row" data-act="cash-collect" data-apartment="${esc(a.id)}" data-tenant="*"><span class="choice-copy"><b>${esc(a.title)}</b><small>${esc(money(rows.reduce((n, x) => n + x.total, 0)))} · ${esc(bills(rows.reduce((n, x) => n + x.items.length, 0)))}</small></span>${icon('arrow', 17)}</button>`).join('')}</div></div>`;
 }
 async function clickAction(el) {
     const act = el.dataset.act;
@@ -495,7 +521,7 @@ async function clickAction(el) {
         return;
     }
     if (act === 'cash-claim' || act === 'cash-withdraw') { await pillAction(el, act === 'cash-claim'); return; }
-    if (act === 'fresh-ok') { for (const { r } of freshUtilities(state.data)) markSeen(state.data, r); fadeAway(el.closest('.fresh-card')); return; }
+    if (act === 'fresh-ok') { const r = state.data.records.find(x => x.id === el.dataset.id); if (r) markSeen(state.data, r); fadeAway(el.closest('.fresh-card')); return; }
     if (act === 'cash-receive') {
         const r = state.data.records.find(x => x.id === el.dataset.id);
         if (!r) throw Error('Запись не найдена. Обновите экран.');
@@ -504,8 +530,12 @@ async function clickAction(el) {
     }
     if (act === 'cash-collect') {
         let apartmentId = el.dataset.apartment;
-        if (!apartmentId) apartmentId = state.data.apartments.filter(a => isMainOwner(a)).find(a => apartmentDebts(state.data, a).length)?.id || '';
-        if (!apartmentId) { toast('Долгов по наличным нет — всё собрано'); return; }
+        if (!apartmentId) {
+            const owing = state.data.apartments.filter(canManage).map(a => ({ a, rows: apartmentDebts(state.data, a) })).filter(x => x.rows.length);
+            if (!owing.length) { toast('Долгов по наличным нет — всё собрано'); return; }
+            if (owing.length > 1) { modal('Забрал наличные', collectChooser(owing)); return; }
+            apartmentId = owing[0].a.id;
+        }
         const ctx = collectionContext(state.data, apartmentId, el.dataset.tenant || '*');
         modal(ctx.entries.length === 1 ? 'Забрал наличные' : 'Забрал у всех', collectionSheet(ctx), { collect: ctx });
         return;
@@ -522,7 +552,14 @@ async function clickAction(el) {
     if (act === 'utilities-decide') {
         const group = el.dataset.group;
         if (el.dataset.decision === 'decline') { modal('Отклонить?', formContent('utilities-decline', notice(utilityGroups(state.data, groupApartment(group)).find(g => g.id === group)?.draft ? 'Черновик будет удалён, жильцы его не увидят. Месяц можно внести заново.' : 'Предложенное изменение не применится, останется прежняя сумма.', 'amber') + '<label class="field"><span>Причина (необязательно)</span><input name="note" type="text" maxlength="200"></label>', 'Отклонить', `data-group="${esc(group)}"`)); return; }
-        await post('/utilities/' + encodeURIComponent(group), { action: 'approve', versions: utilitiesVersions(state.data, group) }, 'approve-' + group + '-' + Object.values(utilitiesVersions(state.data, group)).join('.'));
+        // Busy while it goes out: the button is disabled and spins, so a second tap sends nothing.
+        el.disabled = true; el.classList.add('loading-button'); el.setAttribute('aria-busy', 'true');
+        try {
+            await post('/utilities/' + encodeURIComponent(group), { action: 'approve', versions: utilitiesVersions(state.data, group) }, 'approve-' + group + '-' + Object.values(utilitiesVersions(state.data, group)).join('.'));
+        } catch (e) {
+            if (e.status === 409 || e.status === 404) await reload().catch(() => {});
+            throw e;
+        } finally { if (el.isConnected) { el.disabled = false; el.classList.remove('loading-button'); el.removeAttribute('aria-busy'); } }
         if (state.modal) closeModal();
         await reload(); render();
         toast('Коммуналка отправлена жильцам');
@@ -920,7 +957,7 @@ async function submit(form) {
                 message = 'Покупка одобрена, компенсация отмечена';
             } else {
                 result = await post('/records/' + record.id + '/action', body, key);
-                message = body.action === 'record_payment' ? 'Получение записано' : body.action === 'claim' ? 'Отметили. Собственник подтвердит, когда получит' : 'Статус обновлён';
+                message = body.action === 'record_payment' ? 'Получение записано' : body.action === 'claim' ? `Отметили, ${waitFor(state.data, state.data.apartments.find(x => x.id === record.apartment_id))}` : 'Статус обновлён';
             }
         }
         if (type === 'cash-collect') {
@@ -936,17 +973,22 @@ async function submit(form) {
             return;
         }
         if (type === 'utilities') {
-            const a = state.data.apartments.find(x => x.id === form.dataset.apartment), publish = form.dataset.publish === '1' && isMainOwner(a);
+            const a = state.data.apartments.find(x => x.id === form.dataset.apartment);
+            if (!a) throw Error('Квартира недоступна. Обновите экран.');
+            const publish = form.dataset.publish === '1' && isMainOwner(a);
             if (!data.amount) throw Error('Впишите сумму за месяц.');
-            result = await post('/apartments/' + encodeURIComponent(a.id) + '/utilities', { period: data.period, amount: parseAmount(data.amount), due: data.due, ...(publish ? { publish: true } : {}) }, key);
-            message = publish ? `Коммуналка за ${monthWord(data.period)} отправлена жильцам` : isMainOwner(a) ? 'Черновик сохранён. Жильцы увидят после отправки' : 'Сохранено. ' + (a.owners || []).find(o => o.role === 'owner')?.name + ' проверит и отправит жильцам';
+            // «Черновик» and «Отправить» are different requests: the key says which one this is.
+            result = await post('/apartments/' + encodeURIComponent(a.id) + '/utilities', { period: data.period, amount: parseAmount(data.amount), due: data.due, ...(publish ? { publish: true } : {}) }, key + (publish ? '-send' : '-draft'));
+            message = publish ? `Коммуналка за ${monthWord(data.period)} отправлена жильцам` : isMainOwner(a) ? 'Черновик сохранён' : `Сохранено, ${waitFor(state.data, a)}`;
             result = { id: result.records?.[0]?.id };
         }
         if (type === 'utilities-edit' || type === 'utilities-cancel' || type === 'utilities-decline') {
-            const group = form.dataset.group, a = state.data.apartments.find(x => x.id === groupApartment(group)), wasDraft = utilityGroups(state.data, a.id).find(g => g.id === group)?.draft;
+            const group = form.dataset.group, a = state.data.apartments.find(x => x.id === groupApartment(group));
+            if (!a) throw Error('Коммуналка не найдена. Обновите экран.');
+            const wasDraft = utilityGroups(state.data, a.id).find(g => g.id === group)?.draft;
             const body = type === 'utilities-edit' ? { action: 'update', amount: parseAmount(data.amount), due: data.due } : { action: type === 'utilities-cancel' ? 'cancel' : 'decline', note: data.note || '' };
             await post('/utilities/' + encodeURIComponent(group), { ...body, versions: utilitiesVersions(state.data, group) }, key);
-            message = type === 'utilities-cancel' ? 'Коммуналка отменена' : type === 'utilities-decline' ? 'Отклонено' : !isMainOwner(a) && !wasDraft ? 'Изменение отправлено на одобрение' : 'Коммуналка изменена';
+            message = type === 'utilities-cancel' ? (wasDraft ? 'Черновик удалён' : 'Коммуналка отменена') : type === 'utilities-decline' ? 'Отклонено' : !isMainOwner(a) && !wasDraft ? 'Изменение отправлено на одобрение' : 'Коммуналка изменена';
         }
         if (type === 'readings') {
             if (!form.querySelector('input[type=file]')?.files.length) throw Error('Приложите фото счётчиков — по нему собственник сверит цифры.');
@@ -1103,8 +1145,8 @@ async function submit(form) {
                 const fresh = await request('/state');
                 state.data = fresh;
                 if (type === 'utilities' && e.details?.group_id) {
-                    const box = form.querySelector('[data-utilities-exists]'), a = fresh.apartments.find(x => x.id === form.dataset.apartment);
-                    if (box && a) { box.innerHTML = existingUtilitiesNote(fresh, a, e.details.period); if (errors) errors.textContent = ''; }
+                    const a = fresh.apartments.find(x => x.id === form.dataset.apartment);
+                    if (a && form.querySelector('.sheet-foot')) { showExisting(form, existingUtilitiesNote(fresh, a, e.details.period)); if (errors) errors.textContent = ''; }
                 }
                 if (type === 'cash-collect' && !form.querySelector('[data-act=cash-collect]')) form.querySelector('.form-error')?.insertAdjacentHTML('afterend', button('Пересчитать по новым данным', 'cash-collect', `data-apartment="${esc(form.dataset.apartment)}" data-tenant="${state.modal?.collect?.entries.length === 1 ? esc(state.modal.collect.entries[0].id) : '*'}"`, 'secondary wide'));
                 if (form.dataset.form === 'record-action') {
@@ -1113,6 +1155,8 @@ async function submit(form) {
                         form.dataset.version = r.version;
                 }
                 delete form.dataset.key;
+                // The page behind the sheet shows the fresh data too.
+                if (state.screen === 'app') render();
             }
             catch { }
         }
@@ -1164,16 +1208,30 @@ if (el.type === 'file') {
 document.addEventListener('input', e => { const f = e.target.closest('form'); if (f)
     delete f.dataset.key; if (f) liveForm(f, e.target); });
 // Sheets that answer while typing: utilities split, collection allocation, the charge title.
+// Digits are grouped while typing («43 215»); the caret stays after the same digit.
+function formatMoneyInput(el) {
+    const before = el.value, caret = el.selectionStart ?? before.length, digitsBefore = before.slice(0, caret).replace(/[^\d,.]/g, '').length;
+    const next = groupDigits(before);
+    if (next === before) return;
+    el.value = next;
+    let pos = 0, seen = 0;
+    while (pos < next.length && seen < digitsBefore) { if (/[\d,]/.test(next[pos])) seen++; pos++; }
+    try { el.setSelectionRange(pos, pos); } catch { /* not focused */ }
+}
 function liveForm(f, el) {
+    if (el.matches('[data-money-input]')) formatMoneyInput(el);
     if (el.matches('[data-utilities-amount]')) {
         const out = f.querySelector('[data-split-preview]'), a = state.data?.apartments.find(x => x.id === f.dataset.apartment);
-        if (out && a) { let v = 0; try { v = el.value.trim() ? parseAmount(el.value) : 0; } catch { v = 0; } out.textContent = splitPreview(state.data, a, v); }
+        const people = f.dataset.people ? f.dataset.people.split(',').filter(Boolean) : undefined;
+        if (out && a) { let v = 0; try { v = el.value.trim() ? parseAmount(el.value) : 0; } catch { v = 0; } out.textContent = splitPreview(state.data, a, v, people); }
     }
     if (el.matches('[data-utilities-month]')) checkUtilitiesMonth(f);
     if (el.matches('[data-collect-amount]') && state.modal?.collect) updateCollection(f, state.modal.collect, parseAmount);
     if (el.matches('[data-auto-title]')) el.dataset.edited = '1';
     if (el.matches('[data-title-month]')) { const t = f.querySelector('[data-auto-title]'); let ym = ''; try { ym = parseDisplayDate(el.value, 'month'); } catch { /* typing */ } if (t && ym && !t.dataset.edited) t.value = t.dataset.autoTitle + ' за ' + monthLabel(ym); }
 }
+// The prefilled amount is selected on focus, so typing replaces it at once.
+document.addEventListener('focusin', e => { const el = e.target; if (el.matches?.('[data-select-on-focus]')) setTimeout(() => { if (document.activeElement === el) el.select(); }, 0); });
 document.addEventListener('keydown', e => { if (!state.modal)
     return; if (e.key === 'Escape')
     closeModal(); if (e.key === 'Tab') {

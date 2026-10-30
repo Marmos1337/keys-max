@@ -1,6 +1,6 @@
-# Co-owner run: Анна invites «Мама» by a link (bot path), Мама opens the apartment
+# Co-owner run: Анна invites «Екатерина» by a link (bot path), Екатерина opens the apartment
 # with owner rights, confirms a cash payment that the tenant marked; the tenant sees
-# both owners; Анна removes Мама; «Папа» joins inside the Mini App and leaves himself.
+# both owners; Анна removes Екатерина; «Папа» joins inside the Mini App and leaves himself.
 # Usage: python coowner_e2e.py <out_dir>   (server on :3000 with seed-rich.mjs data, fake Bot API on :3999)
 import json, os, subprocess, sys, time, urllib.request
 from playwright.sync_api import sync_playwright
@@ -37,7 +37,7 @@ with sync_playwright() as p:
     check('owner: «Совладельцы» shows the main owner and a hint', 'Главный' in sec and 'Ведёте квартиру вместе' in sec, sec)
     own.click('.owners-section [data-act=owner-invite]'); own.wait_for_selector('[data-form=owner-invite-create]'); settle(own)
     own.screenshot(path=f'{OUT}/coowner-01-invite-form.png')
-    own.fill('[data-form=owner-invite-create] input[name=label]', 'Мама'); own.click('[data-form=owner-invite-create] button[type=submit]'); own.wait_for_selector('[data-invite-url]'); settle(own, 900)
+    own.fill('[data-form=owner-invite-create] input[name=label]', 'Екатерина'); own.click('[data-form=owner-invite-create] button[type=submit]'); own.wait_for_selector('[data-invite-url]'); settle(own, 900)
     url = own.inner_text('[data-invite-url]'); check('owner: co-owner link goes to the bot with own_', url.startswith('https://t.me/rentkeysbot?start=own_'), url)
     own.screenshot(path=f'{OUT}/coowner-02-link.png')
     own.click('[data-act=share-invite]'); settle(own, 500)
@@ -45,48 +45,48 @@ with sync_playwright() as p:
     check('owner: share text speaks about co-ownership', any('%D1%81%D0%BE%D0%B2%D0%BB%D0%B0%D0%B4%D0%B5%D0%BB' in json.dumps(x) or 'совлад' in json.dumps(x, ensure_ascii=False) for x in ev), ev)
     own.click('.modal [data-act=close-modal]'); settle(own)
     code = url.split('own_')[1]
-    push(text_msg(900100, 'Мама', '/start own_' + code))
+    push(text_msg(900100, 'Екатерина', '/start own_' + code))
     # The seed leaves a queue of earlier notifications in the outbox; the invitation waits its turn.
     m = wait_message(900100, lambda b: 'вести квартиру вместе' in b.get('text', ''), timeout=30)
-    check('bot: Мама gets the co-owner invitation', m is not None and m['reply_markup']['inline_keyboard'][0][0].get('callback_data') == 'own|' + code, m)
-    push(press(900100, 'Мама', 'own|' + code))
+    check('bot: Екатерина gets the co-owner invitation', m is not None and m['reply_markup']['inline_keyboard'][0][0].get('callback_data') == 'own|' + code, m)
+    push(press(900100, 'Екатерина', 'own|' + code))
     done = wait_message(900100, lambda b: 'вы совладелец' in b.get('text', '').lower())
     btn = done and done['reply_markup']['inline_keyboard'][0][0]
     check('bot: «Готово, вы совладелец» opens the apartment', btn and btn['text'] == 'Открыть квартиру' and 'startapp=a_' in btn['web_app']['url'], done)
     push(text_msg(900102, 'Кто-то', '/start own_' + code))
     check('bot: the used link is refused for someone else', wait_message(900102, lambda b: 'другой человек' in b.get('text', '')) is not None)
     mctx, mama, e2 = page_for(browser); errors += [e2]
-    mama.goto(btn['web_app']['url'].replace(PUBLIC, BASE) + launch(900100, 'Мама')); mama.wait_for_selector('.owners-section', timeout=10000); settle(mama, 900)
+    mama.goto(btn['web_app']['url'].replace(PUBLIC, BASE) + launch(900100, 'Екатерина')); mama.wait_for_selector('.owners-section', timeout=10000); settle(mama, 900)
     msec = mama.inner_text('.owners-section')
-    check('Мама: sees both owners, herself marked, can leave, cannot invite', 'Анна' in msec and 'это вы' in msec and mama.locator('[data-act=apartment-leave]').count() == 1 and mama.locator('[data-act=owner-invite]').count() == 0, msec)
-    check('Мама: no «Удалить квартиру»', mama.locator('[data-act=delete-apartment]').count() == 0)
-    check('Мама: can invite tenants and edit the apartment', mama.locator('.people-section [data-act=invite]').count() == 1 and mama.locator('[data-act=edit-apartment]').count() == 1)
+    check('Екатерина: sees both owners, herself marked, can leave, cannot invite', 'Анна' in msec and 'это вы' in msec and mama.locator('[data-act=apartment-leave]').count() == 1 and mama.locator('[data-act=owner-invite]').count() == 0, msec)
+    check('Екатерина: no «Удалить квартиру»', mama.locator('[data-act=delete-apartment]').count() == 0)
+    check('Екатерина: can invite tenants and edit the apartment', mama.locator('.people-section [data-act=invite]').count() == 1 and mama.locator('[data-act=edit-apartment]').count() == 1)
     tall(mama, f'{OUT}/coowner-03-mama-apartment-light.png')
     mama.click('.apartment-tabs [data-tab=meters]'); settle(mama)
-    check('Мама: manages meters', mama.locator('[data-act=new-meter]').count() > 0)
-    # The tenant marks cash; Мама confirms.
+    check('Екатерина: manages meters', mama.locator('[data-act=new-meter]').count() > 0)
+    # The tenant marks cash; Екатерина confirms.
     tctx, ten, e3 = page_for(browser, 375); errors += [e3]
     rid = json.loads(subprocess.check_output([NODE, '-e', "const {DatabaseSync}=require('node:sqlite');const d=new DatabaseSync(process.argv[1]);console.log(JSON.stringify(d.prepare(\"SELECT id FROM records WHERE kind='charge' AND status='pending' ORDER BY created_at DESC LIMIT 1\").get()))", os.environ['KEYS_DB']], text=True, stderr=subprocess.DEVNULL))['id']
     ten.goto(BASE + '/?startapp=r_' + rid + launch(900005, 'Ольга')); ten.wait_for_selector('.detail-amount', timeout=10000); settle(ten)
     ten.click('[data-act=record-action][data-action=claim] >> nth=0'); ten.wait_for_selector('.method-switch'); ten.click('[data-form=record-action] button[type=submit]'); ten.wait_for_selector('.claim-card', timeout=10000)
-    mama.goto(BASE + '/?startapp=r_' + rid + launch(900100, 'Мама')); mama.wait_for_selector('.claim-card', timeout=10000); settle(mama)
+    mama.goto(BASE + '/?startapp=r_' + rid + launch(900100, 'Екатерина')); mama.wait_for_selector('.claim-card', timeout=10000); settle(mama)
     mama.click('.claim-card [data-action=confirm]'); mama.wait_for_selector('[data-form=record-action]'); settle(mama); mama.click('[data-form=record-action] button[type=submit]'); mama.wait_for_selector('.pay-entry.ok', timeout=10000); settle(mama)
-    log = mama.inner_text('.payment-log'); check('Мама: confirmed the cash; history names her', 'Мама' in log and 'наличными' in log, log)
+    log = mama.inner_text('.payment-log'); check('Екатерина: confirmed the cash; history names her', 'Екатерина' in log and 'наличными' in log, log)
     tall(mama, f'{OUT}/coowner-04-mama-confirmed-cash.png')
     own.goto(BASE + '/' + launch(777001, 'Анна')); own.wait_for_selector('.app-body', timeout=10000); settle(own)
     own.click('[data-act=nav][data-page=notifications] >> visible=true >> nth=0'); settle(own)
-    notes = own.inner_text('main'); check('Анна: notification says Мама confirmed', 'Мама' in notes and 'Получено' in notes, notes[:400])
+    notes = own.inner_text('main'); check('Анна: notification says Екатерина confirmed', 'Екатерина' in notes and 'Получено' in notes, notes[:400])
     own.screenshot(path=f'{OUT}/coowner-05-owner-notification.png')
     ten.goto(BASE + '/' + launch(900005, 'Ольга')); ten.wait_for_selector('.app-body', timeout=10000); open_apartment(ten)
-    body = ten.inner_text('main'); check('tenant: «Собственники» lists Анна and Мама', 'Собственники' in body and 'Мама' in body and 'Анна' in body, body[:600])
+    body = ten.inner_text('main'); check('tenant: «Собственники» lists Анна and Екатерина', 'Собственники' in body and 'Екатерина' in body and 'Анна' in body, body[:600])
     tall(ten, f'{OUT}/coowner-06-tenant-sees-owners.png')
-    # Анна removes Мама.
+    # Анна removes Екатерина.
     open_apartment(own); own.click('[data-act=co-owner-manage]'); own.wait_for_selector('[data-form=co-owner-remove]'); settle(own)
     own.screenshot(path=f'{OUT}/coowner-07-remove.png')
     own.click('[data-form=co-owner-remove] button[type=submit]'); own.wait_for_selector('.modal', state='detached'); settle(own)
-    check('Анна: Мама removed from the list', 'Мама' not in own.inner_text('.owners-section'))
-    mama.goto(BASE + '/' + launch(900100, 'Мама')); mama.wait_for_selector('.app-body, .role-page', timeout=10000); settle(mama)
-    check('Мама: the apartment is gone after removal', 'Квартира на Лесной' not in mama.inner_text('body'))
+    check('Анна: Екатерина removed from the list', 'Екатерина' not in own.inner_text('.owners-section'))
+    mama.goto(BASE + '/' + launch(900100, 'Екатерина')); mama.wait_for_selector('.app-body, .role-page', timeout=10000); settle(mama)
+    check('Екатерина: the apartment is gone after removal', 'Квартира на Лесной' not in mama.inner_text('body'))
     # Папа joins inside the Mini App, then leaves.
     open_apartment(own); own.click('.owners-section [data-act=owner-invite]'); own.wait_for_selector('[data-form=owner-invite-create]'); own.fill('[data-form=owner-invite-create] input[name=label]', 'Папа'); own.click('[data-form=owner-invite-create] button[type=submit]'); own.wait_for_selector('[data-invite-url]')
     code2 = own.inner_text('[data-invite-url]').split('own_')[1]
@@ -104,7 +104,7 @@ with sync_playwright() as p:
     check('Папа: left by himself', 'Квартира на Лесной' not in papa.inner_text('main'))
     own.goto(BASE + '/' + launch(777001, 'Анна')); own.wait_for_selector('.app-body', timeout=10000); open_apartment(own)
     own.click('.apartment-tabs [data-tab=history]'); settle(own)
-    hist = own.inner_text('main'); check('history: every co-owner change carries the actor', 'Мама — совладелец квартиры' in hist and 'Выход из совладельцев: Папа' in hist, hist[:800])
+    hist = own.inner_text('main'); check('history: every co-owner change carries the actor', 'Екатерина — совладелец квартиры' in hist and 'Выход из совладельцев: Папа' in hist, hist[:800])
     tall(own, f'{OUT}/coowner-11-history.png')
     check('no page errors', not any(errors), errors)
     browser.close()

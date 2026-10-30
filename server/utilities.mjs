@@ -70,13 +70,15 @@ export function createUtilities(db, u, apartmentId, b) {
  *   A draft is edited in place and stays a draft. A published group: the primary owner's edit applies at once; a co-owner's edit
  *   is stored as payload.pending_change (the primary owner may edit that in place too, it stays unapproved).
  * approve: primary owner only, publishes the draft or applies pending_change. decline: primary owner only, drops it and tells the author.
- * cancel: only while nothing is paid or claimed. */
+ * cancel: only while nothing is paid or claimed; a published group by the primary owner only, a draft also by its author. */
 export function changeUtilities(db, u, groupId, b) {
     const action = V.choice(b.action, ['update', 'cancel', 'approve', 'decline'], 'Действие'), rows = groupRows(db, V.text(groupId, 'Коммуналка', 80));
     if (!rows.length) fail(404, 'Коммуналка не найдена.');
     const a = managedApartment(db, u, rows[0].apartment_id), versions = V.own(b.versions), primary = isPrimary(a, u);
     if (Object.keys(versions).length !== rows.length || rows.some(r => versions[r.id] !== r.version)) fail(409, 'Коммуналка уже изменилась. Обновите экран и повторите.');
     if (['approve', 'decline'].includes(action) && !primary) fail(403, 'Одобрять и отклонять коммуналку может только основной собственник.');
+    // A published month is cancelled by the primary owner only; a co-owner may drop her own draft.
+    if (action === 'cancel' && !primary && (!awaitingApproval(rows[0].payload) || (rows[0].payload.author || rows[0].created_by) !== u.id)) fail(403, 'Отменить отправленную коммуналку может только основной собственник. Можно предложить другую сумму.');
     if (action === 'cancel' && rows.some(r => touched(r.payload))) fail(409, 'По этой коммуналке уже есть оплаты или отметки об оплате, поэтому отменить её нельзя. Можно изменить сумму.');
     const leases = new Map(rows.map(r => [r.id, db.get('SELECT * FROM leases WHERE id=?', r.lease_id)]));
     if ([...leases.values()].some(l => l.status === 'ended')) fail(409, 'Аренда завершена. История доступна только для чтения.');

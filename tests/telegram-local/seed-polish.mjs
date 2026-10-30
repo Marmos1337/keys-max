@@ -1,5 +1,5 @@
 // Extra data on top of seed-rich.mjs for design reviews, so every counter and list
-// shows its real shape: co-owner «Мама» (Telegram 900100), a second tenant from MAX
+// shows its real shape: co-owner «Екатерина» (Telegram 900100), a second tenant from MAX
 // (Игорь, 5550002), a second apartment let by rooms with one tenant (Дмитрий, 900006)
 // and a free room, pending tenant/co-owner links, a purchase, a visit and a document.
 // Usage: node seed-polish.mjs <repo> <data_dir>   (after seed-rich.mjs, same data dir)
@@ -18,8 +18,8 @@ const flat = db.get('SELECT * FROM apartments WHERE owner_id=? ORDER BY created_
 const lease = db.get("SELECT * FROM leases WHERE apartment_id=? AND status='active' LIMIT 1", flat.id);
 
 // Co-owner by a personal link, plus one link still waiting.
-const mama = db.tx(() => ensureTelegramUser(db, { id: '900100', name: 'Мама', allowsWrite: true }));
-const own = db.tx(() => O.createOwnerInvite(db, anna, flat.id, { label: 'Мама', secret: SECRET }));
+const mama = db.tx(() => ensureTelegramUser(db, { id: '900100', name: 'Екатерина', allowsWrite: true }));
+const own = db.tx(() => O.createOwnerInvite(db, anna, flat.id, { label: 'Екатерина', secret: SECRET }));
 db.tx(() => O.joinOwnerInvite(db, user(mama.id), own.code));
 db.tx(() => O.createOwnerInvite(db, anna, flat.id, { label: 'Брат', secret: SECRET }));
 

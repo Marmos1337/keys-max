@@ -1,4 +1,4 @@
-// The real 0.7 situation: Степан (Telegram 800001) owns «Квартира на Мира», his mom «Мама» (800002)
+// The real 0.7 situation: Степан (Telegram 800001) owns «Квартира на Мира», co-owner «Екатерина» (800002)
 // is a co-owner; two tenants are both called «Саня» — the first one has @sanya_p, the second has no
 // @handle (800003, 800004). Rent for August–October, utilities for June–August (June settled),
 // August rent paid, and one open «Отдал наличными» mark by Саня @sanya_p on the September rent.
@@ -19,9 +19,9 @@ db.run("UPDATE users SET role='owner' WHERE id=?", stepan.id); stepan = user(ste
 const flat = db.tx(() => D.createApartment(db, stepan, { title: 'Квартира на Мира', address: 'Москва, проспект Мира, 41, кв. 12', rooms: 2, area: 48, start: '2026-06-01', end: '2027-05-31', rent: 4000000, deposit: 4000000, terms: 'Оплата наличными, Степан забирает раз в два месяца', due_day: 5, meter_day: 25, recurring_rent: false }));
 const lease = db.get("SELECT * FROM leases WHERE apartment_id=? AND status='active' LIMIT 1", flat.id);
 
-const mama = db.tx(() => ensureTelegramUser(db, { id: '800002', name: 'Мама', allowsWrite: true }));
+const mama = db.tx(() => ensureTelegramUser(db, { id: '800002', name: 'Екатерина', allowsWrite: true }));
 db.run("UPDATE users SET role='owner' WHERE id=?", mama.id);
-const own = db.tx(() => O.createOwnerInvite(db, stepan, flat.id, { label: 'Мама', secret: SECRET }));
+const own = db.tx(() => O.createOwnerInvite(db, stepan, flat.id, { label: 'Екатерина', secret: SECRET }));
 db.tx(() => O.joinOwnerInvite(db, user(mama.id), own.code));
 
 const join = (tg, handle) => {

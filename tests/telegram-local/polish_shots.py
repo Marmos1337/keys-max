@@ -236,7 +236,7 @@ def tenant_run(browser, w, scheme):
     ctx.close()
 
 def coowner_run(browser, w, scheme):
-    t = f'{w}-{scheme}'; ctx, page, errs = new_page(browser, w, scheme, tg_url(900100, 'Мама', scheme)); enter(page)
+    t = f'{w}-{scheme}'; ctx, page, errs = new_page(browser, w, scheme, tg_url(900100, 'Екатерина', scheme)); enter(page)
     step('coowner home', lambda: shot(page, f'coowner-home-{t}'))
     step('coowner apartment', lambda: (nav(page, 'apartments'), pick_apartment(page, 'Квартира на Лесной'), shot(page, f'coowner-apt-overview-{t}')))
     step('coowner leave', lambda: sheet(page, f'coowner-sheet-leave-{t}', lambda: page.click('[data-act=apartment-leave]')))

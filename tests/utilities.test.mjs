@@ -305,3 +305,16 @@ test('Utilities approval over HTTP: approve is for the primary owner only',async
   const ok=await f.api(`/api/utilities/${made.data.group_id}`,{method:'POST',body:{action:'approve',versions}});
   assert.equal(ok.status,200);assert.equal(ok.data.records[0].visibility,'shared');
 });
+
+test('Utilities cancel: a published month is cancelled by the primary owner only; a co-owner may drop only her own draft',t=>{
+  const f=fixture(t),{a,mama}=flat(f,{recurring_rent:false});
+  const pub=add(f,f.owner,a);
+  assert.throws(()=>change(f,mama,pub,{action:'cancel'}),status(403),'co-owner cannot cancel a published month');
+  const c=change(f,f.owner,pub,{action:'cancel'});assert.equal(c.records[0].status,'cancelled');
+  const ownerDraft=add(f,f.owner,a,{publish:false});
+  assert.throws(()=>change(f,mama,ownerDraft,{action:'cancel'}),status(403),'co-owner cannot cancel the primary owner\'s draft');
+  change(f,f.owner,ownerDraft,{action:'cancel'});
+  const hers=add(f,mama,a,{period:D.nextMonth(PERIOD)});
+  assert.equal(hers.records[0].payload.approval,'pending');
+  const gone=change(f,mama,hers,{action:'cancel'});assert.equal(gone.records[0].status,'cancelled');
+});

@@ -29,7 +29,7 @@ export const statusColor = s => ['closed', 'paid', 'accepted', 'compensated', 's
 export const badge = (status, label) => `<span class="badge ${statusColor(status)}">${esc(label || statusNames[status] || status)}</span>`;
 // One status chip for a record everywhere (lists, detail, home). An unpaid bill past its date says so.
 export function recordBadge(r, today = '') {
-    if (r.kind === 'charge' && r.payload?.approval === 'pending') return badge('pending', 'Ждёт одобрения');
+    if (r.kind === 'charge' && r.payload?.approval === 'pending') return badge('pending', 'Ждёт отправки');
     if (r.kind === 'charge' && ['pending', 'partial'].includes(r.status) && today && r.payload?.due < today) return badge('open', 'Просрочен');
     const label = r.kind === 'charge' && r.status === 'pending' ? 'К оплате' : r.kind === 'charge' && r.status === 'claimed' ? 'Ждёт подтверждения' : undefined;
     return badge(r.status, label);
@@ -71,7 +71,9 @@ export const select = (label, name, options, value) => `<label class="field"><sp
 export const uploadField = (label = 'Фото и документы', onlyImages = false) => `<label class="file-input"><span>${icon('upload')}<b>${label}</b></span><small>До 5 файлов, каждый до 10 МБ · ${onlyImages ? 'JPG, PNG, WebP' : 'PDF, JPG, PNG, WebP, TXT'}</small><input type="file" name="files" multiple accept="${onlyImages ? 'image/jpeg,image/png,image/webp' : '.pdf,.jpg,.jpeg,.png,.webp,.txt'}"><span class="file-chosen" data-file-summary>Выбрать файлы</span></label>`;
 export const categoryNames = { contract: 'Договор', act: 'Акт', receipt: 'Квитанция', agreement: 'Соглашение', other: 'Другое' };
 // Server titles end months with «2026 г.»; on screen the year reads without «г.».
-export const recordTitle = r => String(r?.title ?? '').replace(/(\d{4})\s?г\.$/, '$1');
+// «Аренда за сентябрь 2026 г.» → «Аренда за сентябрь»: this year goes without saying, other years stay.
+const thisYear = new RegExp('\\s' + new Date().getFullYear() + '$');
+export const recordTitle = r => String(r?.title ?? '').replace(/(\d{4})\s?г\.$/, '$1').replace(thisYear, '');
 export const kindNames = { ticket: 'Заявка', purchase: 'Покупка', visit: 'Посещение', charge: 'Платёж', reading: 'Показания', document: 'Документ', expense: 'Расход', termination: 'Завершение аренды', terms: 'Условия аренды' };
 export const kindIcon = { ticket: 'tool', purchase: 'bag', visit: 'calendar', charge: 'wallet', reading: 'meter', document: 'file', expense: 'coins', termination: 'logout', terms: 'file' };
 export function uuid() { if (globalThis.crypto?.randomUUID)

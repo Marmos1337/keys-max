@@ -55,7 +55,7 @@ export async function syncGuide(user) {
 }
 export function guidePrompt(user) {
     if (!showGuidePrompt(user)) return '';
-    return `<aside class="guide-prompt" data-guide-prompt data-tone="blue" aria-label="Знакомство с приложением"><div><b>С чего начать?</b><p>Короткий гид по вашей аренде</p></div>${button('Открыть', 'guide-open', '', 'secondary')}<button type="button" class="icon-button guide-dismiss" data-act="guide-dismiss" aria-label="Больше не показывать подсказку" title="Больше не показывать">${icon('close',18)}</button></aside>`;
+    return `<aside class="guide-prompt" data-guide-prompt data-tone="blue" aria-label="Знакомство с приложением"><div><b>С чего начать?</b><p>${user.role === 'owner' ? 'Короткий гид по сдаче квартиры' : 'Короткий гид по вашей аренде'}</p></div>${button('Открыть', 'guide-open', '', 'secondary')}<button type="button" class="icon-button guide-dismiss" data-act="guide-dismiss" aria-label="Больше не показывать подсказку" title="Больше не показывать">${icon('close',18)}</button></aside>`;
 }
 export function guideContent(user, config) {
     const owner = user.role === 'owner';

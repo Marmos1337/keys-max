@@ -27,7 +27,7 @@ def stop():
     if DATA: shutil.rmtree(DATA, ignore_errors=True)
 
 # Signed Telegram launch; username keeps the @handle (login refreshes it from the messenger).
-PEOPLE = {'stepan': (800001, 'Степан', 'stepan_n'), 'mama': (800002, 'Мама', ''), 'sanya_p': (800003, 'Саня', 'sanya_p'), 'sanya2': (800004, 'Саня', '')}
+PEOPLE = {'stepan': (800001, 'Степан', 'stepan_n'), 'mama': (800002, 'Екатерина', ''), 'sanya_p': (800003, 'Саня', 'sanya_p'), 'sanya2': (800004, 'Саня', '')}
 def url(who, scheme='light', start=''):
     uid, name, handle = PEOPLE[who]
     user = {'id': uid, 'first_name': name, 'allows_write_to_pm': True, 'language_code': 'ru', **({'username': handle} if handle else {})}
@@ -76,8 +76,10 @@ if __name__ == '__main__':
             check('owner: utilities sent', 'отправлена' in own.inner_text('.toast'), own.inner_text('.toast'))
             # Same month again: the sheet offers to open it instead.
             own.click('.quick-grid.trio [data-act=utilities]'); own.wait_for_selector('[data-form=utilities]'); settle(own)
-            own.fill('[data-form=utilities] input[name=period]', '09.2026'); settle(own, 200)
-            check('sheet: existing month → «Открыть / изменить»', own.locator('[data-utilities-exists] [data-act=open-record]').count() == 1)
+            sheet = rect(own, '.modal')
+            own.fill('[data-form=utilities] input[name=period]', '09.2026'); settle(own, 300)
+            check('sheet: «already entered» takes the buttons\' place, the sheet keeps its height', rect(own, '.modal') == sheet and own.locator('.sheet-foot[data-foot=exists]').count() == 1, (sheet, rect(own, '.modal')))
+            check('sheet: existing month → «Открыть запись» in place of the buttons', own.locator('[data-utilities-exists] [data-act=open-record]').count() == 1)
             own.click('[data-act=close-modal]'); settle(own)
 
             # Tenant: new utilities card on top, one tap, then withdraw; the pill keeps its size.
@@ -92,8 +94,9 @@ if __name__ == '__main__':
             ten.screenshot(path=f'{OUT}/e2e-03-tenant-claimed.png')
             ten.click(pill + ' .cash-done'); ten.wait_for_selector(pill + '[data-state=open]', timeout=8000); settle(ten, 900)
             check('tenant: withdraw brings the pill back', ten.locator(pill + '[data-state=open]').count() == 1)
+            seen = ten.get_attribute('.fresh-card', 'data-fresh')
             ten.click('.fresh-card [data-act=fresh-ok]'); settle(ten, 700)
-            check('tenant: «Понятно» hides the card', ten.locator('.fresh-card').count() == 0)
+            check('tenant: «Понятно» hides that bill\'s card', ten.locator(f'.fresh-card[data-fresh="{seen}"]').count() == 0)
             ten.locator('.my-due-title').first.click(); ten.wait_for_selector('.share-panel', timeout=8000); settle(ten)
             first = ten.inner_text('.share-row >> nth=0')
             check('tenant detail: own row first as «Вы»', first.split('\n')[1:2] == ['Вы'], first)
@@ -108,6 +111,7 @@ if __name__ == '__main__':
             own.fill('[data-collect-amount]', '999999'); settle(own, 200)
             check('collection: more than the debt is refused inline', 'Больше долга' in own.inner_text('.entry-error') and own.is_disabled('[data-collect-submit]'))
             check('collection: the sheet keeps its size', rect(own, '.modal') == box, (box, rect(own, '.modal')))
+            check('collection: button says «Проверьте суммы», field is red', T(own, '[data-collect-submit]') == 'Проверьте суммы' and own.locator('.money-field.invalid').count() == 1, T(own, '[data-collect-submit]'))
             own.fill('[data-collect-amount]', '1000'); settle(own, 200)
             own.screenshot(path=f'{OUT}/e2e-04-collection.png')
             own.click('[data-collect-submit]'); own.wait_for_selector('.toast-action', timeout=10000); settle(own)
@@ -120,10 +124,13 @@ if __name__ == '__main__':
             mctx, mom, merr = page_for(browser)
             login(mom, 'mama')
             check('co-owner: minimal home with «Впишите коммуналку»', 'Впишите коммуналку за октябрь' in mom.inner_text('main') and mom.locator('.cash-section').count() == 0, mom.inner_text('main')[:300])
+            check('co-owner: amount prefilled with last month\'s real value', mom.input_value('.co-utilities-form [data-utilities-amount]').replace('\u00a0', ' ') == '3 000', mom.input_value('.co-utilities-form [data-utilities-amount]'))
+            mom_card = rect(mom, '.co-utilities')
             mom.fill('.co-utilities-form [data-utilities-amount]', '3100'); mom.click('.co-utilities-form button[type=submit]'); mom.wait_for_selector('.co-status', timeout=10000); settle(mom)
             check('co-owner: status «Ждёт отправки»', 'Ждёт отправки' in mom.inner_text('.co-utilities'))
+            check('co-owner: card keeps its height from input to saved', abs(mom_card[1] - rect(mom, '.co-utilities')[1]) <= 2, (mom_card, rect(mom, '.co-utilities')))
             login(own, 'stepan')
-            check('owner: «Нужно одобрить» block', 'Нужно одобрить' in own.inner_text('main') and '3 100' in T(own, '.approval-block'))
+            check('owner: «Ждёт отправки» block', 'Ждёт отправки' in own.inner_text('main') and '3 100' in T(own, '.approval-block'))
             own.click('.approval-block [data-decision=approve]'); own.wait_for_selector('.toast', timeout=10000); settle(own)
             check('owner: approved block disappears', own.locator('.approval-block').count() == 0)
             check('no horizontal overflow', not own.evaluate('document.documentElement.scrollWidth>innerWidth+1'))

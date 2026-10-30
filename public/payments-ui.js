@@ -3,7 +3,7 @@
 import { esc, icon, button, notice, money, date, datetime, field, textarea, uploadField, today, badge } from './utils.js';
 import { claimsFor, freeAmount, tenantIds, canManage, isMainOwner } from './rental-ui.js';
 import { nameIn } from './people.js';
-import { chargePeople, cashPill, myCash, otherWayLink, isUtilities, isDraft, mainOwnerName, monthWord, utilitiesTouched, changeLine, utilityGroups } from './cash-ui.js';
+import { chargePeople, cashPill, myCash, myShare, otherWayLink, isUtilities, isDraft, mainOwnerName, monthWord, utilitiesTouched, utilityGroups } from './cash-ui.js';
 import { remainingBy } from './shares.js';
 
 const how = m => m === 'transfer' ? 'переводом' : 'наличными';
@@ -12,11 +12,12 @@ const initial = name => esc(String(name || '?').trim()[0] || '?');
 const persons = n => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'человека' : 'человек'}`;
 const fileLinks = (d, ids = []) => ids.filter(id => d.files.some(f => f.id === id)).map((id, n) => `<button type="button" class="text-link file-chip" data-act="file" data-id="${esc(id)}">${icon('camera', 15)} Фото${ids.length > 1 ? ' ' + (n + 1) : ''}</button>`).join('');
 
-function progress(p) {
-    const pct = p.amount ? Math.min(100, Math.round(p.confirmed / p.amount * 100)) : 0, waiting = claimsFor(p).reduce((n, c) => n + c.amount, 0);
-    const waitPct = p.amount ? Math.min(100 - pct, Math.round(waiting / p.amount * 100)) : 0;
+// Progress of a whole bill (owners) or of one share (a tenant sees only their own part).
+function progress({ amount, confirmed, waiting }) {
+    const pct = amount ? Math.min(100, Math.round(confirmed / amount * 100)) : 0;
+    const waitPct = amount ? Math.min(100 - pct, Math.round(waiting / amount * 100)) : 0;
     return `<div class="pay-progress" role="img" aria-label="Подтверждено ${pct}%"><span class="pay-done" data-w="${pct}"></span><span class="pay-wait" data-w="${waitPct}"></span></div>
-        <div class="pay-legend"><span><i class="dot done"></i>Получено ${money(p.confirmed)}</span>${waiting ? `<span><i class="dot wait"></i>Ждёт подтверждения ${money(waiting)}</span>` : ''}<span><i class="dot rest"></i>Осталось ${money(Math.max(0, p.amount - p.confirmed - waiting))}</span></div>`;
+        <div class="pay-legend"><span><i class="dot done"></i>Получено ${money(confirmed)}</span>${waiting ? `<span><i class="dot wait"></i>Ждёт подтверждения ${money(waiting)}</span>` : ''}<span><i class="dot rest"></i>Осталось ${money(Math.max(0, amount - confirmed - waiting))}</span></div>`;
 }
 const statusBadge = { paid: ['paid', 'Оплачено'], waiting: ['claimed', 'Ждёт подтверждения'], owes: ['open', 'Должен'] };
 // «Кто сколько»: one row per tenant of this bill, the viewer first. Room tenants only ever see
@@ -24,10 +25,15 @@ const statusBadge = { paid: ['paid', 'Оплачено'], waiting: ['claimed', '
 function sharePanel(s, r, view, manage, open) {
     const d = s.data;
     if (!view.rows.length) return '';
+    const draft = isDraft(r);
     const row = x => {
-        const who = nameIn(d, x.id, { fallback: 'Бывший жилец' }), [st, label] = statusBadge[x.status];
+        const me = x.id === d.user.id, who = nameIn(d, x.id, { fallback: 'Бывший жилец' }), [st, label] = statusBadge[x.status];
         const give = manage && open && x.left > 0 && freeAmount(r.payload) > 0;
-        return `<div class="share-row${x.id === d.user.id ? ' mine' : ''}"><span class="person-avatar">${initial(x.id === d.user.id ? d.user.name : who)}</span><div class="share-top"><b class="share-name">${esc(who)}</b>${badge(st, label)}</div><dl class="share-figures"><div><dt>Доля</dt><dd>${money(x.share)}</dd></div><div><dt>${x.id === d.user.id ? 'Отдали' : 'Отдал'}</dt><dd>${money(x.paid)}</dd></div><div><dt>Осталось</dt><dd>${money(x.owed)}</dd></div></dl>${give ? `<div class="share-act">${button(icon('check', 17) + ' Получил ' + money(Math.min(x.left, freeAmount(r.payload))), 'cash-receive', `data-id="${esc(r.id)}" data-person="${esc(x.id)}"`, 'secondary small')}</div>` : ''}</div>`;
+        // A hand-over waiting for the owner reads «На проверке» in amber; once confirmed it is «Отдал» again.
+        const checking = x.waiting > 0 && x.status !== 'paid';
+        const tag = draft ? '<span class="badge neutral">Черновик</span>' : badge(st, me && x.status === 'owes' ? 'Должны' : label);
+        const middle = checking ? `<div class="checking"><dt>На проверке</dt><dd>${money(x.waiting)}</dd></div>` : `<div><dt>${me ? 'Отдали' : 'Отдал'}</dt><dd>${money(x.paid)}</dd></div>`;
+        return `<div class="share-row${me ? ' mine' : ''}"><span class="person-avatar">${initial(me ? d.user.name : who)}</span><div class="share-top"><b class="share-name">${esc(who)}</b>${tag}</div><dl class="share-figures"><div><dt>Доля</dt><dd>${money(x.share)}</dd></div>${middle}<div><dt>Осталось</dt><dd>${money(x.owed)}</dd></div></dl>${give ? `<div class="share-act">${button(icon('check', 17) + ' Получил ' + money(Math.min(x.left, freeAmount(r.payload))), 'cash-receive', `data-id="${esc(r.id)}" data-person="${esc(x.id)}"`, 'secondary small')}</div>` : ''}</div>`;
     };
     const p = r.payload, total = isUtilities(r) && p.group_total ? `всего ${money(p.group_total)} на ${persons(p.people_total || view.rows.length)}` : view.rows.length > 1 ? 'поровну на ' + persons(view.rows.length) : '';
     return `<section class="share-panel" aria-label="Кто сколько"><div class="share-head"><h3>Кто сколько</h3>${total ? `<small>${esc(total)}</small>` : ''}</div><div class="share-rows">${view.rows.map(row).join('')}</div></section>`;
@@ -38,8 +44,8 @@ function utilitiesControls(s, r, a, open) {
     if (!g || !open) return '';
     const main = isMainOwner(a), boss = mainOwnerName(d, a), id = esc(g.id), out = [];
     if (g.draft) {
-        out.push(notice(main ? ((p.author || r.created_by) === d.user.id ? 'Черновик: жильцы его не видят. Проверьте сумму и отправьте.' : `Внесла ${esc(nameIn(d, p.author || r.created_by, { fallback: 'совладелец' }))}. Жильцы не видят, пока вы не отправите.`) : `Ждёт одобрения: ${esc(boss)} проверит и отправит жильцам.`, 'amber', 'info'));
-        out.push(`<div class="action-row utilities-actions">${main ? button('Отправить жильцам', 'utilities-decide', `data-group="${id}" data-decision="approve"`, 'primary') : ''}${button(icon('edit', 17) + ' Изменить', 'utilities-edit', `data-group="${id}"`, 'secondary')}${main ? button('Отклонить', 'utilities-decide', `data-group="${id}" data-decision="decline"`, 'ghost danger') : ''}</div>`);
+        out.push(notice(main ? ((p.author || r.created_by) === d.user.id ? 'Черновик: жильцы его не видят. Проверьте сумму и отправьте.' : `Внесла ${esc(nameIn(d, p.author || r.created_by, { fallback: 'совладелец' }))}. Жильцы не видят, пока вы не отправите.`) : `Ждёт отправки: ${esc(boss)} проверит и отправит жильцам.`, 'amber', 'info'));
+        out.push(`<div class="action-row utilities-actions">${main ? button('Отправить жильцам', 'utilities-decide', `data-group="${id}" data-decision="approve"`, 'primary') : ''}${button(icon('edit', 17) + ' Изменить', 'utilities-edit', `data-group="${id}"`, 'secondary')}${main ? button('Отклонить', 'utilities-decide', `data-group="${id}" data-decision="decline"`, 'ghost danger') : (p.author || r.created_by) === d.user.id ? button('Удалить черновик', 'utilities-cancel', `data-group="${id}"`, 'ghost danger') : ''}</div>`);
         return out.join('');
     }
     if (g.change) {
@@ -47,12 +53,17 @@ function utilitiesControls(s, r, a, open) {
         if (main) out.push(`<div class="action-row utilities-actions">${button('Одобрить', 'utilities-decide', `data-group="${id}" data-decision="approve"`, 'primary')}${button('Отклонить', 'utilities-decide', `data-group="${id}" data-decision="decline"`, 'secondary')}</div>`);
         return out.join('');
     }
-    return `<div class="action-row utilities-actions">${button(icon('edit', 17) + ' Изменить сумму', 'utilities-edit', `data-group="${id}"`, 'secondary')}${!utilitiesTouched(d, g.id) ? button('Отменить', 'utilities-cancel', `data-group="${id}"`, 'ghost danger') : ''}</div>`;
+    // Cancelling a month tenants already see is the main owner's call.
+    return `<div class="action-row utilities-actions">${button(icon('edit', 17) + (main ? ' Изменить сумму' : ' Предложить другую сумму'), 'utilities-edit', `data-group="${id}"`, 'secondary')}${main && !utilitiesTouched(d, g.id) ? button('Отменить', 'utilities-cancel', `data-group="${id}"`, 'ghost danger') : ''}</div>`;
 }
 
 export function chargeDetail(s, r, a, l) {
     const d = s.data, p = r.payload, claims = claimsFor(p), owner = canManage(a), open = l.status !== 'ended', view = chargePeople(d, r), live = open && !isDraft(r) && ['pending', 'partial', 'claimed'].includes(r.status);
-    let html = `<div class="detail-amount" data-fit-number>${money(p.amount)}</div><p class="detail-due">Оплатить до ${date(p.due, { year: 'numeric' })}</p>` + progress(p);
+    // A tenant sees their own share as the headline; the whole bill is the context line.
+    const mine = !owner ? myShare(d, r) : null, part = mine && !mine.alone;
+    let html = part
+        ? `<div class="detail-amount" data-fit-number>${money(mine.share)}</div><p class="detail-due">Ваша доля из ${money(p.amount)} · до ${date(p.due)}</p>` + progress({ amount: mine.share, confirmed: Math.min(mine.paid, mine.share), waiting: mine.waiting })
+        : `<div class="detail-amount" data-fit-number>${money(p.amount)}</div><p class="detail-due">Оплатить до ${date(p.due)}</p>` + progress({ amount: p.amount, confirmed: p.confirmed, waiting: claimsFor(p).reduce((n, c) => n + c.amount, 0) });
     if (p.cancel_reason) html += notice(esc(p.cancel_reason), 'amber');
     if (owner && isUtilities(r)) html += utilitiesControls(s, r, a, open);
     if (!owner && view.joinedLater) html += notice('Счёт выставлен до вашего заезда — вашей доли в нём нет.', 'blue');

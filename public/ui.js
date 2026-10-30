@@ -35,9 +35,9 @@ export function listItem({ leading = '', content, trailing = '', className = '',
     const tag = act ? 'button' : 'div';
     return `<${tag} ${act ? `type="button" data-act="${esc(act)}"` : ''} class="surface ui-row ${className}" ${tone ? `data-tone="${esc(tone)}"` : ''} ${attrs}>${leading}${content}${trailing}</${tag}>`;
 }
-export function statCard({ label, value, name, tone = 'neutral', className = '', act = '', attrs = '' }) {
+export function statCard({ label, value, name, tone = 'neutral', className = '', act = '', attrs = '', sub = '' }) {
     const tag = act ? 'button' : 'div';
-    return surface(`${name ? pillIcon(name, tone) : ''}<span class="stat-label">${esc(label)}</span><strong data-fit-number>${value}</strong>`, {
+    return surface(`${name ? pillIcon(name, tone) : ''}<span class="stat-label">${esc(label)}</span><strong data-fit-number>${value}</strong>${sub ? `<small class="stat-sub">${esc(sub)}</small>` : ''}`, {
         className: `stat-card ${act ? 'clickable' : ''} ${className}`.trim(),
         tone,
         tag,

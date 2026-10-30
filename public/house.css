@@ -671,9 +671,13 @@ body.modal-open .toast { animation-name: toast-drop; }
 .alloc-list li strong { font-size: 14px; white-space: nowrap; }
 .alloc-list li.muted-line { opacity: .5; }
 .entry-error { min-height: 18px; margin: 6px 0 0; font-size: 12px; color: var(--red-strong); }
-.modal .cash-entries { max-height: min(46dvh, 420px); overflow-y: auto; overscroll-behavior: contain; padding-bottom: 20px; }
-/* More tenants below: the list fades out at its edge instead of being cut. */
-.modal .cash-entries:has(> :nth-child(2)) { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
+.entry-error { min-height: 18px; margin: 6px 4px 0; line-height: 18px; }
+.money-field.invalid input, .money-field.invalid input:focus { box-shadow: inset 0 0 0 1.5px var(--red-strong), 0 0 0 3px color-mix(in srgb, var(--red-strong) 18%, transparent); }
+/* No list inside a list: the whole sheet scrolls, the date and the button stay at the bottom. */
+.modal:has(.cash-sheet) { padding-bottom: 0; }
+.cash-sheet .sheet-dock { position: sticky; bottom: 0; z-index: 2; display: grid; gap: 12px; padding: 12px 0 calc(20px + var(--safe-bottom)); background: var(--card); }
+.cash-sheet .sheet-dock::before { content: ''; position: absolute; left: 0; right: 0; bottom: 100%; height: 20px; background: linear-gradient(to top, var(--card), transparent); pointer-events: none; }
+.cash-sheet .sheet-dock .form-error:empty { display: none; }
 
 /* Utilities sheet. */
 .big-amount input { height: 60px; font-size: 26px; font-weight: 700; letter-spacing: -.01em; }
@@ -684,6 +688,13 @@ body.modal-open .toast { animation-name: toast-drop; }
 .utilities-exists { display: grid; gap: 8px; }
 .utilities-exists .notice { margin: 0; }
 .sheet-actions { margin: 4px 0 0; }
+/* Save buttons and «already entered» share one cell: the sheet keeps its height, only the face changes. */
+.sheet-foot { display: grid; min-height: 100px; }
+.sheet-foot > .foot-face { grid-area: 1 / 1; display: grid; align-content: start; gap: 8px; transition: opacity 180ms var(--ease); }
+.sheet-foot[data-foot="new"] > .foot-exists, .sheet-foot[data-foot="exists"] > .foot-new { opacity: 0; pointer-events: none; }
+.sheet-foot .notice { margin: 0; }
+.foot-link { justify-self: center; min-height: 44px; padding: 0 12px; color: var(--link); font-weight: 600; }
+.utilities-sheet .small-note { margin: 0; }
 .utilities-missing .utilities-missing-title { font-size: 16px; line-height: 1.35; }
 
 /* Approval of utilities (main owner) and the co-owner's card. */
@@ -702,8 +713,24 @@ body.modal-open .toast { animation-name: toast-drop; }
 .co-status strong { font-size: 28px; font-weight: 700; letter-spacing: -.02em; }
 .co-utilities-form { display: grid; gap: 10px; }
 .co-utilities-form .form-error:empty { display: none; }
-.co-hint { display: block; margin-top: 10px; font-size: 12px; line-height: 1.6; }
-.co-utilities .action-row { margin: 12px 0 0; grid-template-columns: 1fr; }
+.co-input-row { display: grid; gap: 10px; }
+.co-input-row .btn { min-height: 48px; }
+.co-hint { display: block; font-size: 12px; line-height: 1.6; }
+/* Input and saved states keep one height; the inside fades when it switches. */
+.co-body { display: grid; min-height: 212px; }
+.co-utilities-form { align-content: start; }
+.co-saved { display: grid; grid-template-rows: auto auto 1fr; gap: 6px; }
+.co-saved small { line-height: 1.6; }
+.co-saved .co-status { margin: 0; min-height: 64px; }
+.co-actions { display: flex; align-items: flex-end; margin-top: 8px; }
+.co-actions .btn { min-width: 160px; }
+.co-body.swap-in > * { animation: fade-in 220ms var(--ease) both; }
+@media (min-width:768px) {
+  .co-utilities-form, .co-saved { max-width: 420px; }
+  .co-input-row { grid-template-columns: minmax(0,1fr) auto; align-items: end; }
+  .co-input-row .btn { height: 60px; padding: 0 24px; }
+  .co-body { min-height: 168px; }
+}
 
 /* Finances: earlier utilities months folded. */
 .past-months { margin-top: 12px; }
@@ -719,7 +746,52 @@ body.modal-open .toast { animation-name: toast-drop; }
 .toast-action:focus-visible { outline: 2px solid var(--on-ink); outline-offset: 2px; }
 .receive-sheet .cash-entry-head { margin-bottom: 0; }
 
+/* Secondary «Отдал» for every bill but the oldest. */
+.cash-pill.quiet .cash-give { background: var(--card); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-strong); }
+.cash-pill.quiet > .cash-face { min-height: 44px; padding: 8px 16px; font-size: 14px; }
+.my-due-row.quiet { gap: 6px; }
+.my-due-row.quiet .my-due-actions .cash-pill { flex: 0 0 auto; min-width: 0; }
+@media (min-width:480px) { .my-due-row.quiet { grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 10px; } .my-due-row.quiet .my-due-actions { justify-content: flex-end; } }
+@media (min-width:600px) { .my-due-row.quiet .my-due-actions .cash-pill { min-width: 160px; } }
+/* «Кто сколько»: a hand-over waiting for the owner. */
+.share-figures .checking dt { color: var(--amber-ink); }
+.share-figures .checking dd { color: var(--amber-strong); }
+/* Owner home: what came in today under the month's sum. */
+.stat-sub { display: block; margin-top: 2px; font-size: 12px; font-weight: 600; color: var(--green-strong); }
+/* Which flat the cash came from. */
+.choice-list { display: grid; gap: 8px; }
+.choice-row { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 12px; min-height: 56px; padding: 12px 14px; border-radius: var(--radius-inner); }
+.choice-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; text-align: left; }
+.choice-copy small { font-size: 12px; color: var(--muted); }
+/* Disabled ink buttons stay ink, only fainter. */
+.btn.primary:disabled:not(.loading-button) { background: var(--ink); color: var(--on-ink); opacity: .4; }
+/* Equal halves for paired actions; a lone last button takes the row. */
+.action-row, .rule-card > .action-row, .claim-card .action-row { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+.action-row > .btn { width: 100%; min-width: 0; white-space: normal; text-wrap: balance; }
+.action-row > .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.action-row.stacked { grid-template-columns: minmax(0,1fr); }
+/* Owner quick tiles on the narrowest phones: two on top, the third across. */
+@media (max-width:359px) {
+  .quick-grid.trio { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .quick-grid.trio > :last-child { grid-column: 1 / -1; min-height: 72px; grid-template-columns: 40px minmax(0,1fr) 16px; grid-template-rows: auto; align-items: center; }
+  .quick-grid.trio > :last-child > span:nth-child(2) { grid-column: 2; grid-row: 1; align-self: center; }
+  .quick-grid.trio > :last-child > svg { grid-column: 3; grid-row: 1; margin-top: 0; }
+  .quick-grid.trio .quick { padding: 14px 15px; }
+}
+.quick-grid.trio .quick > span:nth-child(2) { overflow-wrap: anywhere; hyphens: auto; }
+/* Bottom bar: no hover look on touch, no grey square after a tap. */
+.bottom-nav .nav-item { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; user-select: none; }
+.bottom-nav .nav-item:hover, .bottom-nav .nav-item:active, .bottom-nav .nav-item:focus { background: transparent; }
+.bottom-nav .nav-item:not(.active):active .nav-icon, .bottom-nav .nav-item:not(.active):hover .nav-icon { background: transparent; }
+.bottom-nav .nav-item:focus:not(:focus-visible) { outline: none; }
+@media (hover:hover) and (pointer:fine) { .bottom-nav .nav-item:not(.active):hover { color: var(--text); } }
+/* Page titles break into even lines. */
+.page-heading h1 { text-wrap: balance; }
+/* Toasts: one line, just above the bottom bar. */
+@media (max-width:760px) { body:not(.modal-open) .toast { bottom: calc(78px + var(--safe-bottom)); } }
+
 @media (prefers-reduced-motion:reduce) {
-  .cash-face, .fresh-card, .alloc-list li { transition: none; }
+  .cash-face, .fresh-card, .alloc-list li, .sheet-foot > .foot-face { transition: none; }
+  .co-body.swap-in > * { animation: none; }
 }
 @media (min-width:761px) { .quick-grid.trio { gap: 16px; } }
