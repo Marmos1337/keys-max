@@ -32,10 +32,12 @@ export function validateInitData(raw,token,{now=Math.floor(Date.now()/1000),maxA
 // Messenger @username without the @: letters, digits and underscores only, else nothing.
 export const cleanHandle=v=>typeof v==='string'&&/^@?[A-Za-z0-9_]{3,64}$/.test(v.trim())?v.trim().replace(/^@/,''):null;
 const PLACEHOLDER_NAMES=['Пользователь','Пользователь MAX','Пользователь Telegram'];
-// Name and @handle follow the messenger at every login, unless the person renamed themselves in the profile.
+// The @handle follows the messenger at every login. A stored name is only replaced while it is a
+// placeholder: 0.6 never rewrote names, so any real name already in the database may be one the
+// person chose, and users created now get the messenger name at insert.
 function refreshIdentity(db,found,u){
-  const handle=cleanHandle(u.handle),custom=!!JSON.parse(found.settings||'{}').name_custom;
-  const name=!custom&&typeof u.name==='string'&&u.name.trim()&&!PLACEHOLDER_NAMES.includes(u.name.trim())?u.name.trim().slice(0,120):found.name;
+  const handle=cleanHandle(u.handle),incoming=typeof u.name==='string'?u.name.trim():'';
+  const name=PLACEHOLDER_NAMES.includes(String(found.name||'').trim())&&incoming&&!PLACEHOLDER_NAMES.includes(incoming)?incoming.slice(0,120):found.name;
   if(handle===(found.handle??null)&&name===found.name)return found;
   db.run('UPDATE users SET name=?,handle=? WHERE id=?',name,handle,found.id);
   return db.get('SELECT * FROM users WHERE id=?',found.id);

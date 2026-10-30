@@ -15,13 +15,13 @@ test('Handles: initData username becomes a clean handle; junk is ignored',()=>{
   assert.equal(cleanHandle('@sanya'),'sanya');assert.equal(cleanHandle('a b'),null);assert.equal(cleanHandle('<x>'),null);assert.equal(cleanHandle(42),null);
 });
 
-test('Handles: login refreshes name and @handle; a name set in the profile is kept; tenants see co-tenants\' handles',async t=>{
+test('Handles: login refreshes the @handle, never a stored real name; a placeholder name is replaced; tenants see co-tenants\' handles',async t=>{
   const f=await httpFixture(t);Object.assign(f.config,{tgBotToken:TG,telegram:true});
   const login=async user=>(await f.api('/api/auth/telegram',{method:'POST',body:{initData:signedData(TG,{user})},auth:false})).data;
   let s=await login(tgUser({username:'sanya_p'}));
   assert.equal(s.user.handle,'sanya_p');assert.equal(s.user.name,'Саня Петров');
   s=await login(tgUser({first_name:'Александр',username:'alex_p'}));
-  assert.equal(s.user.name,'Александр Петров');assert.equal(s.user.handle,'alex_p');
+  assert.equal(s.user.name,'Саня Петров','a real stored name is not overwritten (0.6 never rewrote names)');assert.equal(s.user.handle,'alex_p');
   f.setToken(s.token);
   const me=await f.api('/api/profile',{method:'POST',body:{name:'Саня П.',role:'tenant'}});assert.equal(me.data.name,'Саня П.');
   s=await login(tgUser({username:'sanya_new'}));
@@ -34,6 +34,17 @@ test('Handles: login refreshes name and @handle; a name set in the profile is ke
   const st=D.bootstrap(f.db,f.tenant,f.config),person=st.people.find(p=>p.id===sanya.id);
   assert.deepEqual({...person},{id:sanya.id,name:'Саня П.',handle:'sanya_p'});
   assert.ok(st.people.every(p=>!('label' in p)));
+});
+
+test('Handles: an existing user with a custom name and no name_custom flag keeps it; a placeholder name is replaced',async t=>{
+  const f=await httpFixture(t);Object.assign(f.config,{tgBotToken:TG,telegram:true});
+  const login=async user=>(await f.api('/api/auth/telegram',{method:'POST',body:{initData:signedData(TG,{user})},auth:false})).data;
+  const u=newUser(f.db,'Мой выбор');f.db.run("UPDATE users SET tg_id='777001',settings='{}',handle='old' WHERE id=?",u.id);
+  let s=await login(tgUser({username:'fresh'}));
+  assert.equal(s.user.name,'Мой выбор');assert.equal(s.user.handle,'fresh');
+  f.db.run("UPDATE users SET name='Пользователь Telegram' WHERE id=?",u.id);
+  s=await login(tgUser({username:'fresh'}));
+  assert.equal(s.user.name,'Саня Петров');
 });
 
 test('Handles: bot updates refresh the handle too; placeholder names never overwrite a real one',t=>{

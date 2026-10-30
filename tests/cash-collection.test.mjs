@@ -19,7 +19,7 @@ function flat(f){
   const mama=newUser(f.db,'Мама','owner'),inv=tx(f,()=>O.createOwnerInvite(f.db,f.owner,a.id,{secret:f.config.secret}));tx(f,()=>O.joinOwnerInvite(f.db,mama,inv.code));
   const rent=(period,due)=>tx(f,()=>D.createRecord(f.db,f.owner,{lease_id:l.id,kind:'charge',title:'Аренда за '+period,payload:{amount:3000000,due,period}},f.config));
   const prev=rent(PREV,PREV+'-05'),cur=rent(PERIOD,PERIOD+'-05');
-  const util=tx(f,()=>U.createUtilities(f.db,f.owner,a.id,{period:PERIOD,amount:300000,due:PERIOD+'-20'})).records[0];
+  const util=tx(f,()=>U.createUtilities(f.db,f.owner,a.id,{period:PERIOD,amount:300000,due:PERIOD+'-20',publish:true})).records[0];
   return {a,l,s1:f.u(s1.id),s2:f.u(s2.id),mama:f.u(mama.id),prev,cur,util};
 }
 const rec=(f,id)=>D.decode(f.db.get('SELECT * FROM records WHERE id=?',id));
@@ -124,4 +124,55 @@ test('Cash collection over HTTP: idempotent replay, undo endpoint',async t=>{
   assert.equal(back.status,200);assert.equal(rec(f,prev.id).payload.payments.length,0);
   f.setToken(createSession(f.db,s1.id).token);
   assert.equal((await f.api(`/api/apartments/${a.id}/cash-collections`,{method:'POST',body})).status,403);
+});
+
+test('Cash collection: payer-less legacy money no longer blocks «у всех»; owed adds up to the remainder',t=>{
+  const f=fixture(t),{a,s1,s2,util}=flat(f);
+  const r=rec(f,util.id),p={...r.payload,confirmed:100000,payments:[{id:'old',amount:100000,method:'cash',user_id:null,for_user_id:null,confirmed_at:'2026-10-01'}]};
+  f.db.run("UPDATE records SET status='partial',payload=?,version=version+1 WHERE id=?",JSON.stringify(p),util.id);
+  const o1=owed(f,a,s1.id)-3000000/2*0,u1=debtOf(C.openChargesOf(f.db,a,s1.id).filter(x=>x.id===util.id),s1.id).total,u2=debtOf(C.openChargesOf(f.db,a,s2.id).filter(x=>x.id===util.id),s2.id).total;
+  assert.equal(u1+u2,200000);assert.ok(o1>0);
+  const c=collect(f,f.owner,a,[entry(f,a,s1,owed(f,a,s1.id)),entry(f,a,s2,owed(f,a,s2.id))]);
+  assert.equal(rec(f,util.id).status,'paid');assert.equal(rec(f,util.id).payload.confirmed,300000);assert.ok(c.total>0);
+  assert.equal(owed(f,a,s1.id)+owed(f,a,s2.id),0);
+});
+
+test('Cash collection: a partly used claim stays open for the rest; undo restores the original claim exactly',t=>{
+  const f=fixture(t),{a,s1,util}=flat(f);
+  const claimed=tx(f,()=>D.actionRecord(f.db,s1,util.id,{version:util.version,action:'claim'})),orig=claimed.payload.claims[0];
+  assert.equal(orig.amount,150000);
+  // The owner edits the total down underneath the claim: s1's share is now 400 ₽.
+  const p={...claimed.payload,amount:80000,shares:{...claimed.payload.shares,[s1.id]:40000}};
+  p.shares=Object.fromEntries(Object.keys(p.shares).map(k=>[k,40000]));
+  f.db.run('UPDATE records SET payload=?,version=version+1 WHERE id=?',JSON.stringify(p),util.id);
+  const before=rec(f,util.id).payload;
+  const c=collect(f,f.owner,a,[entry(f,a,s1,owed(f,a,s1.id))]);
+  const after=rec(f,util.id).payload,used=c.entries[0].lines.find(l=>l.record_id===util.id).amount;
+  assert.equal(used,40000);
+  assert.equal(after.claims.length,1,'the claim is not deleted');assert.equal(after.claims[0].id,orig.id);assert.equal(after.claims[0].amount,orig.amount-used);
+  const pay=after.payments.find(x=>x.from_claim===orig.id);assert.equal(pay.claimed_amount,orig.amount);assert.equal(pay.paid_on,orig.paid_on,'payment keeps the claim\'s paid_on');assert.equal(pay.method,orig.method);
+  undo(f,f.owner,c);
+  assert.deepEqual(rec(f,util.id).payload,before,'undo restores the original claim and payload exactly');
+});
+
+test('Cash collection: claims of both tenants without for_user_id are both consumed in one call',t=>{
+  const f=fixture(t),{a,s1,s2,util}=flat(f);
+  const c1=tx(f,()=>D.actionRecord(f.db,s1,util.id,{version:util.version,action:'claim'}));
+  const c2=tx(f,()=>D.actionRecord(f.db,s2,util.id,{version:c1.version,action:'claim'}));
+  // Old-style claims: no for_user_id, credited to the claimant.
+  const p={...c2.payload,claims:c2.payload.claims.map(({for_user_id,...c})=>c)};
+  f.db.run('UPDATE records SET payload=?,version=version+1 WHERE id=?',JSON.stringify(p),util.id);
+  collect(f,f.owner,a,[entry(f,a,s1,owed(f,a,s1.id)),entry(f,a,s2,owed(f,a,s2.id))]);
+  const after=rec(f,util.id);
+  assert.equal(after.payload.claims.length,0);assert.equal(after.payload.payments.filter(x=>x.from_claim).length,2);assert.equal(after.status,'paid');
+});
+
+test('Cash collection: when a claim made by A for B is consumed, A hears about it too',t=>{
+  const f=fixture(t),{a,s1,s2,util}=flat(f);
+  const claimed=tx(f,()=>D.actionRecord(f.db,s1,util.id,{version:util.version,action:'claim',for_user_id:s2.id}));
+  assert.equal(claimed.payload.claims[0].user_id,s1.id);assert.equal(claimed.payload.claims[0].for_user_id,s2.id);
+  f.db.run('DELETE FROM notifications');
+  collect(f,f.owner,a,[entry(f,a,s2,owed(f,a,s2.id))]);
+  assert.match(notes(f,s1.id).at(-1).text,/Ваша отметка об оплате за Саня.+принята: получено наличными 1\s500\s₽/);
+  assert.equal(notes(f,s2.id).length,1);
 });

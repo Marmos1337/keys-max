@@ -26,13 +26,28 @@ export function sharesOf(payload, members = []) {
     if (s && typeof s === 'object' && Object.keys(s).length) return { ...s };
     return equalSplit(payload?.amount || 0, members);
 }
-export const paidBy = (payload, id) => sum(payload?.payments || [], id);
+// Legacy 0.6 payments have no payer. Their money goes to people in share order (first person's
+// share is filled first, then the next), so the sum of what people owe equals amount − confirmed.
+// Without members or a share snapshot there is nothing to spread over and only explicit payers count.
+function attributedPaid(payload, members = []) {
+    const shares = sharesOf(payload, members), payments = payload?.payments || [], out = {};
+    let loose = payments.filter(x => credited(x) === null).reduce((n, x) => n + (x.amount || 0), 0);
+    for (const pid of Object.keys(shares)) {
+        const own = sum(payments, pid), take = Math.min(loose, Math.max(0, (shares[pid] || 0) - own));
+        out[pid] = own + take;
+        loose -= take;
+    }
+    return out;
+}
+export const paidBy = (payload, id, members = []) => {
+    const spread = attributedPaid(payload, members);
+    return id in spread ? spread[id] : sum(payload?.payments || [], id);
+};
 export const waitingBy = (payload, id) => sum(claimsOf(payload), id);
-// Never more than what is still unpaid on the whole charge: legacy payments without a payer
-// are not credited to anyone but still close the charge.
+// Never more than what is still unpaid on the whole charge.
 export function owedBy(payload, id, members = []) {
     const share = sharesOf(payload, members)[id] || 0;
-    return Math.max(0, Math.min(share - paidBy(payload, id), (payload?.amount || 0) - (payload?.confirmed || 0)));
+    return Math.max(0, Math.min(share - paidBy(payload, id, members), (payload?.amount || 0) - (payload?.confirmed || 0)));
 }
 // What the person still has to hand over: their debt minus hand-overs waiting for confirmation.
 export const remainingBy = (payload, id, members = []) => Math.max(0, owedBy(payload, id, members) - waitingBy(payload, id));
@@ -45,7 +60,7 @@ export function collectableBy(payload, id, members = []) {
 const oldestFirst = (a, b) => String(a.due).localeCompare(String(b.due)) || String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id));
 /** Open debt of one person across charges [{id, status, due?, created_at, payload, members}]. */
 export function debtOf(charges, id) {
-    const items = (charges || []).filter(r => OPEN_CHARGE.includes(r.status ?? 'pending'))
+    const items = (charges || []).filter(r => OPEN_CHARGE.includes(r.status ?? 'pending') && r.payload?.approval !== 'pending')
         .map(r => ({ id: r.id, due: r.due ?? r.payload?.due, created_at: r.created_at, cap: collectableBy(r.payload, id, r.members || []) }))
         .filter(x => x.cap > 0).sort(oldestFirst);
     return { total: items.reduce((n, x) => n + x.cap, 0), items };

@@ -4,9 +4,11 @@ import * as V from './validate.mjs';
 import { bindCover, presentApartment } from './covers.mjs';
 import { isMember, memberIds, unitName, createUnit, managerRole, managerIds, managerSql, listOwnerInvitesFor } from './rental.mjs';
 import { sealCode, openCode } from './invite-codes.mjs';
-import { equalSplit, sharesOf, remainingBy } from '../public/shares.js';
+import { equalSplit, sharesOf, remainingBy, debtOf } from '../public/shares.js';
 export { isMember, memberIds } from './rental.mjs';
 export const nowISO = () => new Date().toISOString();
+// A co-owner's proposed utilities change is for managers only; tenants keep seeing the approved amount.
+export const hidePending = r => r?.payload?.pending_change ? { ...r, payload: Object.fromEntries(Object.entries(r.payload).filter(([k]) => k !== 'pending_change')) } : r;
 export const decode = r => r ? { ...r, payload: JSON.parse(r.payload) } : null;
 export const settings = u => ({ events: true, reminders: true, bot: true, ...JSON.parse(u.settings || '{}') });
 export const safeUser = u => ({ id: u.id, name: u.name, handle: u.handle || null, role: u.role, demo: !!u.demo, bot_enabled: !!u.bot_enabled, tg_bot_enabled: !!u.tg_bot_enabled, platforms: { max: !!u.max_id, telegram: !!u.tg_id }, settings: settings(u) });
@@ -310,12 +312,13 @@ export function createRecord(db, u, b, config) {
 }
 // Who pays which part of a new charge: an equal split among the tenants who are in the lease now.
 // Later joiners are not added to an existing charge.
-export function shareSnapshot(db,lease,amount) { const ids=memberIds(db,lease.id); return ids.length?{shares:equalSplit(amount,ids)}:{}; }
+export function shareSnapshot(db,lease,amount) { const managers=new Set(managerIds(db,lease.apartment_id)),ids=memberIds(db,lease.id).filter(id=>!managers.has(id)); return ids.length?{shares:equalSplit(amount,ids)}:{}; }
 function terminationDate(value, lease) { const d = V.date(value); if (d < lease.start)
     fail(400, 'Дата завершения не может быть раньше начала аренды.'); return d; }
 export const statusText = { open: 'Открыта', in_progress: 'В работе', resolved: 'Ожидает подтверждения арендатора', closed: 'Решена', cancelled: 'Отменено', pending: 'На согласовании', approved: 'Одобрено', rejected: 'Отклонено', compensated: 'Компенсировано', proposed: 'Предложено время', counter: 'Предложено другое время', accepted: 'Согласовано', completed: 'Состоялось', claimed: 'Ожидает подтверждения собственника', partial: 'Частично оплачено', paid: 'Оплачено', submitted: 'Передано', stored: 'Сохранено', recorded: 'Записано' };
 export function actionRecord(db, u, id, b) {
     const ctx = recordAccess(db, u, id, true), r = ctx.record, p = { ...r.payload };
+    if (p.approval === 'pending') fail(409, 'Коммуналка ещё не одобрена основным собственником.');
     const version = V.integer(b.version, 'Версия', 1);
     if (r.version !== version)
         fail(409, 'Запись уже изменилась. Обновите экран и повторите действие.');
@@ -552,7 +555,8 @@ export function actionRecord(db, u, id, b) {
     const title = label || `${r.title}: ${statusText[status] || status}`;
     event(db, u, ctx.lease, title, r.id, r.visibility);
     notifyOther(db, u, ctx, title, r.id, r.visibility);
-    return decode(db.get('SELECT * FROM records WHERE id=?', r.id));
+    const fresh = decode(db.get('SELECT * FROM records WHERE id=?', r.id));
+    return ctx.owner ? fresh : hidePending(fresh);
 }
 export function addComment(db,u,id,b) {
     const {record,lease,...ctx}=recordAccess(db,u,id,true),text=V.text(b.text,'Комментарий',3000);
@@ -680,7 +684,8 @@ export function bootstrap(db,u,config,{coverUrls=true}={}) {
     const apartments=db.all(`SELECT DISTINCT a.* FROM apartments a LEFT JOIN leases l ON l.apartment_id=a.id WHERE ${access} ORDER BY a.created_at`,u.id,u.id).map(a=>({...presentApartment(db,u,a,config,coverUrls),my_role:managerRole(db,a,u.id)||'tenant',owners:apartmentOwners(db,a)}));
     const leases=db.all(`SELECT l.* FROM leases l JOIN apartments a ON a.id=l.apartment_id WHERE ${access} ORDER BY l.created_at DESC`,u.id,u.id).map(l=>({...l,tenant_ids:memberIds(db,l.id),unit_title:unitName(db,l)}));
     const recordAccessSql=`(${managerSql('a')} OR (r.visibility='shared' AND EXISTS(SELECT 1 FROM lease_members lm WHERE lm.lease_id=r.lease_id AND lm.user_id=?)))`;
-    const records=db.all(`SELECT r.* FROM records r JOIN apartments a ON a.id=r.apartment_id WHERE ${recordAccessSql} ORDER BY r.created_at DESC`,u.id,u.id).map(decode);
+    const managed=new Set(apartments.filter(a=>a.my_role!=='tenant').map(a=>a.id));
+    const records=db.all(`SELECT r.* FROM records r JOIN apartments a ON a.id=r.apartment_id WHERE ${recordAccessSql} ORDER BY r.created_at DESC`,u.id,u.id).map(decode).map(r=>managed.has(r.apartment_id)?r:hidePending(r));
     const events=db.all(`SELECT e.*,u.name AS author FROM events e JOIN users u ON u.id=e.user_id JOIN apartments a ON a.id=e.apartment_id WHERE ${managerSql('a')} OR (e.visibility='shared' AND EXISTS(SELECT 1 FROM lease_members lm WHERE lm.lease_id=e.lease_id AND lm.user_id=?)) ORDER BY e.created_at DESC LIMIT 1000`,u.id,u.id);
     for(const l of leases) {
         const future=records.filter(r=>r.lease_id===l.id&&r.kind==='terms'&&r.status==='accepted'&&r.payload.effective_month>dateInZone(config.timezone).slice(0,7)).sort((a,b)=>a.payload.effective_month.localeCompare(b.payload.effective_month))[0];
@@ -805,6 +810,23 @@ export function dueDate(month,day) {
     const last=new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5)),0)).getUTCDate();
     return month+'-'+String(Math.min(day,last)).padStart(2,'0');
 }
+// Last day of the month (business timezone): one message per tenant, once per month, with what
+// they still owe across rent and utilities. Tenants who owe nothing get nothing.
+export function monthEndDigest(db,config,time=Date.now()) {
+    const today=dateInZone(config.timezone,time),ym=today.slice(0,7),[y,m,d]=today.split('-').map(Number);
+    if(d!==new Date(Date.UTC(y,m,0)).getUTCDate()) return;
+    const tenants=db.all("SELECT DISTINCT lm.user_id FROM lease_members lm JOIN leases l ON l.id=lm.lease_id WHERE l.status IN ('active','ending')").map(x=>x.user_id);
+    for(const uid of tenants) {
+        const charges=db.all(`SELECT r.* FROM records r JOIN leases l ON l.id=r.lease_id JOIN lease_members lm ON lm.lease_id=l.id AND lm.user_id=? WHERE r.kind='charge' AND r.visibility='shared' AND r.status IN ('pending','partial','claimed') AND l.status!='ended'`,uid).map(decode).map(r=>({...r,members:memberIds(db,r.lease_id)}));
+        const debt=debtOf(charges,uid);
+        if(debt.total<=0) continue;
+        const byId=new Map(charges.map(r=>[r.id,r]));
+        let rent=0,utilities=0;
+        const lines=debt.items.map(x=>{const r=byId.get(x.id);if(r.payload.category==='utilities') utilities+=x.cap;else rent+=x.cap;return `${r.title} — ${formatMoney(x.cap)}`;});
+        const head=[rent&&`аренда ${formatMoney(rent)}`,utilities&&`коммуналка ${formatMoney(utilities)}`].filter(Boolean).join(', ');
+        pushNotification(db,uid,`Итог за ${monthText(ym)}`,`Итог за ${monthText(ym)}: ${head} — ваша доля к оплате ${formatMoney(debt.total)}\n${lines.join('\n')}`,null,`digest:${uid}:${ym}`,'reminders');
+    }
+}
 export function generateRecurring(db,config,time=Date.now()) {
     const today=dateInZone(config.timezone,time),ym=today.slice(0,7),day=Number(today.slice(8));
     const leases=db.all("SELECT l.*,a.owner_id,a.title AS apartment_title FROM leases l JOIN apartments a ON a.id=l.apartment_id WHERE l.status IN ('active','ending') AND EXISTS(SELECT 1 FROM lease_members lm WHERE lm.lease_id=l.id)");
@@ -831,7 +853,10 @@ export function generateRecurring(db,config,time=Date.now()) {
         const endDays=Math.ceil((Date.parse(end)-Date.parse(today))/86400000);
         if([30,7,1,0].includes(endDays)) for(const uid of [...managerIds(db,l.apartment_id),...memberIds(db,l.id)]) pushNotification(db,uid,'Срок аренды заканчивается',`${l.apartment_title} · ${unitName(db,l)}\nДата окончания: ${humanDate(end)}`,null,`lease-end:${l.id}:${uid}:${today}`,'reminders',{target:'l_'+l.id});
     }
+    monthEndDigest(db,config,time);
     for(const r of db.all("SELECT * FROM records WHERE kind IN ('charge','visit') AND status NOT IN ('paid','cancelled','completed')").map(decode)) {
+        // Utilities have no per-charge reminders: tenants get the month-end digest instead.
+        if(r.kind==='charge'&&r.payload.category==='utilities') continue;
         const l=db.get('SELECT * FROM leases WHERE id=?',r.lease_id);if(l.status==='ended') continue;
         const a=db.get('SELECT * FROM apartments WHERE id=?',r.apartment_id);
         let remind=false,title='',detail='';

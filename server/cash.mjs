@@ -28,7 +28,7 @@ export function collectCash(db, u, apartmentId, b) {
     if (!Array.isArray(b.entries) || !b.entries.length || b.entries.length > 20) fail(400, 'Укажите, у кого и сколько получено.');
     const zone = process.env.TZ || 'Europe/Moscow', paidOn = b.paid_on ? V.date(b.paid_on, 'Дата получения') : dateInZone(zone);
     if (paidOn > dateInZone(zone, Date.now() + 86400000)) fail(400, 'Дата получения не может быть в будущем.');
-    const note = V.text(b.note, 'Комментарий', 1000, true), id = randomUUID(), at = nowISO(), seen = new Set(), before = new Map(), entries = [];
+    const note = V.text(b.note, 'Комментарий', 1000, true), id = randomUUID(), at = nowISO(), seen = new Set(), before = new Map(), entries = [], helped = new Map();
     const titles = new Map();
     for (const raw of b.entries) {
         const e = V.own(raw), tenantId = V.text(e.tenant_id, 'Жилец', 80);
@@ -52,8 +52,11 @@ export function collectCash(db, u, apartmentId, b) {
             for (const c of p.claims.filter(c => credited(c) === tenantId)) {
                 if (!left) break;
                 const take = Math.min(c.amount, left);
+                // Payments made from a claim keep the claim's paid_on, method and note.
                 payments.push({ ...c, ...stamp, id: randomUUID(), amount: take, for_user_id: tenantId, from_claim: c.id, claimed_amount: c.amount });
-                p.claims = p.claims.filter(x => x.id !== c.id);
+                // A partly used claim stays open for the rest (undo restores the original from the snapshot).
+                p.claims = c.amount > take ? p.claims.map(x => x.id === c.id ? { ...c, amount: c.amount - take } : x) : p.claims.filter(x => x.id !== c.id);
+                if (c.user_id && c.user_id !== tenantId) helped.set(c.user_id + '|' + tenantId, { by: c.user_id, tenant: tenantId, amount: (helped.get(c.user_id + '|' + tenantId)?.amount || 0) + take });
                 left -= take;
             }
             if (left) payments.push({ id: randomUUID(), amount: left, method: 'cash', paid_on: paidOn, user_id: tenantId, for_user_id: tenantId, note, files: [], ...stamp });
@@ -71,6 +74,9 @@ export function collectCash(db, u, apartmentId, b) {
     db.run('INSERT INTO cash_collections(id,apartment_id,created_by,created_at,paid_on,note,total,entries,snapshot) VALUES(?,?,?,?,?,?,?,?,?)', id, a.id, u.id, at, paidOn, note, total, JSON.stringify(entries), JSON.stringify(snapshot));
     const day = paidOn === dateInZone(zone) ? '' : `, ${humanDate(paidOn)}`;
     for (const e of entries) pushNotification(db, e.tenant_id, 'Записана оплата наличными', `Получено от вас наличными ${formatMoney(e.amount)}${day} — ${u.name}:\n${e.lines.map(l => `${titles.get(l.record_id)} — ${formatMoney(l.amount)}`).join('\n')}\n${a.title}`, e.lines[0]?.record_id || null);
+    // Someone who marked a payment for another tenant hears that it was received.
+    const managers = new Set(managerIds(db, a));
+    for (const h of helped.values()) if (h.by !== u.id && !managers.has(h.by)) pushNotification(db, h.by, 'Записана оплата наличными', `Ваша отметка об оплате за ${who(db, h.tenant)} принята: получено наличными ${formatMoney(h.amount)}${day} — ${u.name}\n${a.title}`, null);
     for (const uid of managerIds(db, a)) if (uid !== u.id) pushNotification(db, uid, 'Записаны наличные', `${u.name}: получено наличными ${formatMoney(total)}${day}\n${entries.map(e => `${who(db, e.tenant_id)} — ${formatMoney(e.amount)}`).join('\n')}\n${a.title}`, null, null, 'events', { target: 'a_' + a.id });
     const records = snapshot.map(x => decode(db.get('SELECT * FROM records WHERE id=?', x.record_id)));
     return { collection_id: id, apartment_id: a.id, total, paid_on: paidOn, entries, versions: Object.fromEntries(records.map(r => [r.id, r.version])), records };

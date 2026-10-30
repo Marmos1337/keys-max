@@ -60,3 +60,17 @@ test('Shares: allocation goes oldest first by due then created_at, never above e
   assert.deepEqual(allocate(debt.items,0),{lines:[],rest:0});
   assert.equal(debtOf(charges,'b').total,1650000);
 });
+
+test('Shares: payer-less legacy money fills the first person\'s share, then the next; owed adds up to amount − confirmed',()=>{
+  const p={amount:300000,confirmed:100000,payments:[{amount:100000,user_id:null}],claims:[]},ids=['a','b'];
+  assert.equal(owedBy(p,'a',ids),50000);assert.equal(owedBy(p,'b',ids),150000);
+  assert.equal(owedBy(p,'a',ids)+owedBy(p,'b',ids),p.amount-p.confirmed);
+  assert.equal(paidBy(p,'a',ids),100000);assert.equal(paidBy(p,'b',ids),0);
+  assert.equal(paidBy(p,'a'),0,'without members nothing to spread over');
+  const mixed={amount:300000,confirmed:250000,shares:{a:150000,b:150000},payments:[{amount:100000,user_id:'b'},{amount:150000}],claims:[]};
+  assert.equal(owedBy(mixed,'a',ids)+owedBy(mixed,'b',ids),50000,'explicit payer first, loose money fills the rest in share order');
+  const charge={id:'c',status:'partial',created_at:'1',payload:{...p,due:'2026-10-10'},members:ids};
+  assert.equal(debtOf([charge],'a').total+debtOf([charge],'b').total,200000);
+  const draft={...charge,payload:{...charge.payload,approval:'pending'}};
+  assert.equal(debtOf([draft],'b').total,0,'a draft is not debt');
+});
