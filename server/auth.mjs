@@ -25,13 +25,26 @@ export function validateInitData(raw,token,{now=Math.floor(Date.now()/1000),maxA
   let u;try{u=JSON.parse(p.get('user')||'null');}catch{fail(401,t.user);}
   if(!u||!Number.isSafeInteger(u.id)||u.id<=0||typeof u.first_name!=='string'||u.is_bot===true)fail(401,t.user);
   const out={id:String(u.id),name:[u.first_name,u.last_name].filter(Boolean).join(' ').slice(0,120)||'Пользователь',startParam:p.get('start_param')||''};
+  const handle=cleanHandle(u.username);if(handle)out.handle=handle;
   if(platform==='telegram')out.allowsWrite=u.allows_write_to_pm===true;
   return out;
 }
-export function ensureMaxUser(db,u){let found=db.get('SELECT * FROM users WHERE max_id=?',u.id);if(!found){const id=randomUUID();db.run('INSERT INTO users(id,max_id,name,created_at) VALUES(?,?,?,?)',id,u.id,u.name,new Date().toISOString());found=db.get('SELECT * FROM users WHERE id=?',id);}return found;}
+// Messenger @username without the @: letters, digits and underscores only, else nothing.
+export const cleanHandle=v=>typeof v==='string'&&/^@?[A-Za-z0-9_]{3,64}$/.test(v.trim())?v.trim().replace(/^@/,''):null;
+const PLACEHOLDER_NAMES=['Пользователь','Пользователь MAX','Пользователь Telegram'];
+// Name and @handle follow the messenger at every login, unless the person renamed themselves in the profile.
+function refreshIdentity(db,found,u){
+  const handle=cleanHandle(u.handle),custom=!!JSON.parse(found.settings||'{}').name_custom;
+  const name=!custom&&typeof u.name==='string'&&u.name.trim()&&!PLACEHOLDER_NAMES.includes(u.name.trim())?u.name.trim().slice(0,120):found.name;
+  if(handle===(found.handle??null)&&name===found.name)return found;
+  db.run('UPDATE users SET name=?,handle=? WHERE id=?',name,handle,found.id);
+  return db.get('SELECT * FROM users WHERE id=?',found.id);
+}
+export function ensureMaxUser(db,u){let found=db.get('SELECT * FROM users WHERE max_id=?',u.id);if(!found){const id=randomUUID();db.run('INSERT INTO users(id,max_id,name,handle,created_at) VALUES(?,?,?,?,?)',id,u.id,u.name,cleanHandle(u.handle),new Date().toISOString());found=db.get('SELECT * FROM users WHERE id=?',id);}return refreshIdentity(db,found,u);}
 export function ensureTelegramUser(db,u){
   let found=db.get('SELECT * FROM users WHERE tg_id=?',u.id);
-  if(!found){const id=randomUUID();db.run('INSERT INTO users(id,tg_id,name,created_at) VALUES(?,?,?,?)',id,u.id,u.name||'Пользователь Telegram',new Date().toISOString());found=db.get('SELECT * FROM users WHERE id=?',id);}
+  if(!found){const id=randomUUID();db.run('INSERT INTO users(id,tg_id,name,handle,created_at) VALUES(?,?,?,?,?)',id,u.id,u.name||'Пользователь Telegram',cleanHandle(u.handle),new Date().toISOString());found=db.get('SELECT * FROM users WHERE id=?',id);}
+  else found=refreshIdentity(db,found,u);
   if(u.allowsWrite&&!found.tg_bot_enabled){db.run('UPDATE users SET tg_bot_enabled=1 WHERE id=?',found.id);found=db.get('SELECT * FROM users WHERE id=?',found.id);}
   return found;
 }

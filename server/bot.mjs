@@ -188,7 +188,7 @@ function processMaxUpdate(db,row,b,config) {
     (b.update_type==='message_created'&&chatType!=='dialog')||(b.update_type==='message_callback'&&chatType&&chatType!=='dialog')) {
       db.run("UPDATE webhook_inbox SET status='ignored' WHERE id=?",row.id);return;
   }
-  const u=ensureMaxUser(db,{id:String(source.user_id),name:[source.first_name,source.last_name].filter(Boolean).join(' ')||source.name||'Пользователь MAX'});
+  const u=ensureMaxUser(db,{id:String(source.user_id),name:[source.first_name,source.last_name].filter(Boolean).join(' ')||source.name||'Пользователь MAX',handle:source.username||null});
   if(['bot_stopped','dialog_removed'].includes(b.update_type)) setBot(db,u,'max',false);
   else if(b.update_type==='bot_started') {setBot(db,u,'max',true);startPayload(db,u,String(b.payload||''),'max',config);}
   else if(b.update_type==='message_callback') callbackReply(db,u,b.callback.payload,b.callback.callback_id,'max');

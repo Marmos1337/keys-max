@@ -4,11 +4,12 @@ import * as V from './validate.mjs';
 import { bindCover, presentApartment } from './covers.mjs';
 import { isMember, memberIds, unitName, createUnit, managerRole, managerIds, managerSql, listOwnerInvitesFor } from './rental.mjs';
 import { sealCode, openCode } from './invite-codes.mjs';
+import { equalSplit, sharesOf, remainingBy } from '../public/shares.js';
 export { isMember, memberIds } from './rental.mjs';
 export const nowISO = () => new Date().toISOString();
 export const decode = r => r ? { ...r, payload: JSON.parse(r.payload) } : null;
 export const settings = u => ({ events: true, reminders: true, bot: true, ...JSON.parse(u.settings || '{}') });
-export const safeUser = u => ({ id: u.id, name: u.name, role: u.role, demo: !!u.demo, bot_enabled: !!u.bot_enabled, tg_bot_enabled: !!u.tg_bot_enabled, platforms: { max: !!u.max_id, telegram: !!u.tg_id }, settings: settings(u) });
+export const safeUser = u => ({ id: u.id, name: u.name, handle: u.handle || null, role: u.role, demo: !!u.demo, bot_enabled: !!u.bot_enabled, tg_bot_enabled: !!u.tg_bot_enabled, platforms: { max: !!u.max_id, telegram: !!u.tg_id }, settings: settings(u) });
 export function dateInZone(timezone = 'Europe/Moscow', time = Date.now()) { const parts = new Intl.DateTimeFormat('en-CA', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(time)); return ['year', 'month', 'day'].map(k => parts.find(p => p.type === k).value).join('-'); }
 export function apartmentAccess(db, u, id, ownerOnly = false) { const a = db.get('SELECT * FROM apartments WHERE id=?', id); if (!a)
     fail(404, 'Квартира не найдена.'); const role = managerRole(db, a, u.id); if (role)
@@ -285,7 +286,7 @@ export function createRecord(db, u, b, config) {
         if(due<ctx.lease.start||due>ctx.lease.end) fail(400,'Срок платежа должен попадать в период аренды.');
         let rule=null;
         if(p.repeat===true) rule=createRecurringRule(db,u,{lease_id:ctx.lease.id,title,amount,due_day:Number(due.slice(8)),start_month:period,advance_days:p.advance_days??14},config);
-        return insertRecord(db,u,ctx,kind,'pending',title,{amount,confirmed:0,due,period,payments:[],claims:[],claim:null,...(rule?{rule_id:rule.id}:{})},'shared',rule?`recurring:${rule.id}:${period}`:null,files);
+        return insertRecord(db,u,ctx,kind,'pending',title,{amount,confirmed:0,due,period,payments:[],claims:[],claim:null,...shareSnapshot(db,ctx.lease,amount),...(rule?{rule_id:rule.id}:{})},'shared',rule?`recurring:${rule.id}:${period}`:null,files);
     }
     if (kind === 'reading') return recordReading(db,u,ctx,p,files,config);
     if (kind === 'document') {
@@ -307,6 +308,9 @@ export function createRecord(db, u, b, config) {
         return insertRecord(db, u, ctx, kind, 'proposed', title, { rent: V.integer(p.rent, 'Новая плата', 1), terms: V.text(p.terms, 'Условия', 3000), due_day: V.integer(p.due_day||ctx.lease.due_day,'День оплаты',1,31), previous_rent: ctx.lease.rent, previous_terms: ctx.lease.terms, previous_due_day:ctx.lease.due_day, proposer: u.id, required_approvals: proposalVoters(db,ctx.lease,u.id), accepted_by: [], effective_month: validateTermsMonth(db,ctx.lease,p.effective_month,config) }, 'shared', null, files);
     }
 }
+// Who pays which part of a new charge: an equal split among the tenants who are in the lease now.
+// Later joiners are not added to an existing charge.
+export function shareSnapshot(db,lease,amount) { const ids=memberIds(db,lease.id); return ids.length?{shares:equalSplit(amount,ids)}:{}; }
 function terminationDate(value, lease) { const d = V.date(value); if (d < lease.start)
     fail(400, 'Дата завершения не может быть раньше начала аренды.'); return d; }
 export const statusText = { open: 'Открыта', in_progress: 'В работе', resolved: 'Ожидает подтверждения арендатора', closed: 'Решена', cancelled: 'Отменено', pending: 'На согласовании', approved: 'Одобрено', rejected: 'Отклонено', compensated: 'Компенсировано', proposed: 'Предложено время', counter: 'Предложено другое время', accepted: 'Согласовано', completed: 'Состоялось', claimed: 'Ожидает подтверждения собственника', partial: 'Частично оплачено', paid: 'Оплачено', submitted: 'Передано', stored: 'Сохранено', recorded: 'Записано' };
@@ -420,13 +424,30 @@ export function actionRecord(db, u, id, b) {
         const zone=process.env.TZ||'Europe/Moscow',paidOn=()=>{const d=b.paid_on?V.date(b.paid_on,'Дата оплаты'):dateInZone(zone);if(d>dateInZone(zone,Date.now()+86400000))fail(400,'Дата оплаты не может быть в будущем.');return d;};
         const fileIds=V.attachmentIds(b.files);
         const how=m=>m==='cash'?'наличными':'переводом';
+        const members=memberIds(db,ctx.lease.id);
+        // Optional «за кого»: one tenant may hand over money for another tenant of the same lease.
+        const forWhom=fallback=>{if(b.for_user_id===undefined||b.for_user_id===null||b.for_user_id==='')return fallback;const id=V.text(b.for_user_id,'За кого',80);if(!members.includes(id))fail(400,'Этот человек не участвует в аренде.');return id;};
         if(act==='claim') {
             tenant();
-            if(p.claims.some(c=>c.user_id===u.id)) fail(409,'Ваша оплата уже ждёт подтверждения собственника.');
+            const target=forWhom(u.id);
+            if(p.claims.some(c=>c.user_id===u.id&&(c.for_user_id??c.user_id)===target)) fail(409,target===u.id?'Ваша оплата уже ждёт подтверждения собственника.':'Ваша оплата за этого человека уже ждёт подтверждения.');
             if(available<=0) fail(409,'Вся оставшаяся сумма уже ждёт подтверждения.');
-            const claim={id:randomUUID(),amount:V.integer(b.amount,'Сумма',1,available),method:method(),paid_on:paidOn(),note:V.text(b.note,'Комментарий',1000,true),at:nowISO(),user_id:u.id,files:fileIds};
+            // Without an amount the claim is the person's remaining share (the one-tap «Отдал наличными»).
+            let amount;
+            if(b.amount===undefined||b.amount===null) { amount=Math.min(remainingBy(p,target,members),available); if(amount<=0) fail(409,target===u.id?'Ваша доля уже оплачена или ждёт подтверждения.':'Доля этого человека уже оплачена или ждёт подтверждения.'); }
+            else amount=V.integer(b.amount,'Сумма',1,available);
+            const claim={id:randomUUID(),amount,method:method(),paid_on:paidOn(),note:V.text(b.note,'Комментарий',1000,true),at:nowISO(),user_id:u.id,for_user_id:target,files:fileIds};
             p.claims.push(claim);
-            label=`${u.name}: ${claim.method==='cash'?'передал наличными':'перевёл'} ${formatMoney(claim.amount)} — подтвердите получение`;
+            const whose=target===u.id?'':' за '+(db.get('SELECT name FROM users WHERE id=?',target)?.name||'другого жильца');
+            label=`${u.name}: ${claim.method==='cash'?'передал наличными':'перевёл'} ${formatMoney(claim.amount)}${whose} — подтвердите получение`;
+        } else if(act==='withdraw') {
+            tenant();
+            const claim=p.claims.find(c=>c.id===b.claim_id);
+            if(!claim) fail(409,'Эта отметка уже обработана. Обновите экран.');
+            if(claim.user_id!==u.id) fail(403,'Отменить можно только свою отметку об оплате.');
+            p.claims=p.claims.filter(c=>c.id!==claim.id);
+            p.withdrawn=[...(p.withdrawn||[]),{...claim,withdrawn_at:nowISO()}];
+            label=`${u.name}: отметка об оплате ${formatMoney(claim.amount)} отменена`;
         } else if(act==='confirm'||act==='reject') {
             owner();
             const claim=b.claim_id?p.claims.find(c=>c.id===b.claim_id):p.claims[0];
@@ -447,9 +468,9 @@ export function actionRecord(db, u, id, b) {
             const amount=V.integer(b.amount,'Полученная сумма',1,available);
             const payer=b.payer_id||null;
             if(payer&&!isMember(db,payer,ctx.lease.id)) fail(400,'Плательщик не участвует в этой аренде.');
-            const m=method();
+            const m=method(),credit=forWhom(payer);
             p.confirmed+=amount;
-            p.payments=[...p.payments,{id:randomUUID(),amount,method:m,paid_on:paidOn(),user_id:payer,note:V.text(b.note,'Комментарий',1000,true),files:fileIds,confirmed_by:u.id,confirmed_at:nowISO(),source:'owner_manual'}];
+            p.payments=[...p.payments,{id:randomUUID(),amount,method:m,paid_on:paidOn(),user_id:payer,...(credit?{for_user_id:credit}:{}),note:V.text(b.note,'Комментарий',1000,true),files:fileIds,confirmed_by:u.id,confirmed_at:nowISO(),source:'owner_manual'}];
             label=`Записано получение ${formatMoney(amount)} ${how(m)} — ${u.name}`;
         } else deny();
         p.claim=p.claims[0]||null; // Backward-compatible field for older clients; authoritative list is claims.
@@ -543,10 +564,10 @@ export function addComment(db,u,id,b) {
 export function updateProfile(db, u, b) { const name = V.text(b.name, 'Имя', 120), role = V.choice(b.role, ['owner', 'tenant']); const s = settings(u); for (const key of ['events', 'reminders', 'bot'])
     if (typeof b.settings?.[key] === 'boolean')
         s[key] = b.settings[key]; if (b.settings?.tax_status !== undefined)
-    s.tax_status = V.choice(b.settings.tax_status, ['not_set', 'individual', 'self_employed', 'entrepreneur']); if(b.settings?.theme!==undefined)s.theme=V.choice(b.settings.theme,['auto','light','dark']); db.run('UPDATE users SET name=?,role=?,settings=? WHERE id=?', name, role, JSON.stringify(s), u.id); return safeUser(db.get('SELECT * FROM users WHERE id=?', u.id)); }
+    s.tax_status = V.choice(b.settings.tax_status, ['not_set', 'individual', 'self_employed', 'entrepreneur']); if(b.settings?.theme!==undefined)s.theme=V.choice(b.settings.theme,['auto','light','dark']); if(name!==u.name)s.name_custom=true; db.run('UPDATE users SET name=?,role=?,settings=? WHERE id=?', name, role, JSON.stringify(s), u.id); return safeUser(db.get('SELECT * FROM users WHERE id=?', u.id)); }
 
 export const monthText = ym => new Date(ym+'-01T12:00:00Z').toLocaleDateString('ru-RU',{month:'long',year:'numeric',timeZone:'UTC'});
-const humanDate = value => new Date(value.length===10?value+'T12:00:00Z':value).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});
+export const humanDate = value => new Date(value.length===10?value+'T12:00:00Z':value).toLocaleDateString('ru-RU',{day:'numeric',month:'long',year:'numeric',timeZone:'UTC'});
 export function visibleMeters(db,lease,{activeOnly=true}={}) {
     return db.all(`SELECT * FROM meters WHERE (lease_id=? OR (scope='apartment' AND apartment_id=?)) ${activeOnly?'AND active=1':''} ORDER BY scope,CASE kind WHEN 'cold_water' THEN 0 WHEN 'hot_water' THEN 1 WHEN 'electricity' THEN 2 WHEN 'gas' THEN 3 WHEN 'heating' THEN 4 ELSE 5 END,label,id`,lease.id,lease.apartment_id);
 }
@@ -669,7 +690,7 @@ export function bootstrap(db,u,config,{coverUrls=true}={}) {
     }
     const notifications=db.all('SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 200',u.id);
     const ids=new Set([u.id,...leases.flatMap(l=>l.tenant_ids),...apartments.flatMap(a=>a.owners.map(o=>o.id))]);
-    const people=[...ids].map(id=>db.get('SELECT id,name FROM users WHERE id=?',id));
+    const people=[...ids].map(id=>db.get('SELECT id,name,handle FROM users WHERE id=?',id));
     const units=db.all(`SELECT ru.* FROM rental_units ru JOIN apartments a ON a.id=ru.apartment_id WHERE ${managerSql('a')} OR EXISTS(SELECT 1 FROM leases l JOIN lease_members lm ON lm.lease_id=l.id WHERE l.unit_id=ru.id AND lm.user_id=?) ORDER BY ru.created_at,ru.title`,u.id,u.id);
     const meterMap=new Map();for(const l of leases) for(const m of visibleMeters(db,l,{activeOnly:false})) meterMap.set(m.id,m);
     const meters=[...meterMap.values()];
@@ -688,9 +709,15 @@ export function bootstrap(db,u,config,{coverUrls=true}={}) {
     const comments=db.all(`SELECT c.*,u.name AS author FROM comments c JOIN users u ON u.id=c.user_id JOIN records r ON r.id=c.record_id JOIN apartments a ON a.id=r.apartment_id WHERE ${recordAccessSql} ORDER BY c.created_at`,u.id,u.id);
     const files=db.all(`SELECT f.id,f.record_id,f.name,f.mime,f.size FROM files f JOIN records r ON r.id=f.record_id JOIN apartments a ON a.id=r.apartment_id WHERE ${recordAccessSql}`,u.id,u.id);
     const recurring_rules=db.all(`SELECT rr.* FROM recurring_rules rr JOIN leases l ON l.id=rr.lease_id JOIN apartments a ON a.id=l.apartment_id WHERE ${access} AND rr.state!='deleted' ORDER BY rr.created_at`,u.id,u.id).map(rr=>({...rr,next_editable_month:nextEditableMonth(db,rr,dateInZone(config.timezone).slice(0,7)),revisions:db.all('SELECT * FROM recurring_revisions WHERE rule_id=? ORDER BY from_month',rr.id)}));
-    return {user:safeUser(u),apartments,units,leases,records,events,notifications,people,meters,meter_history,recurring_rules,comments,files,invites:apartments.some(a=>a.my_role!=='tenant')?listInvites(db,u):[],owner_invites:listOwnerInvitesFor(db,u),members:memberDates(db,leases),server_time:nowISO(),business_date:dateInZone(config.timezone),timezone:config.timezone};
+    return {user:safeUser(u),apartments,units,leases,records,events,notifications,people,meters,meter_history,recurring_rules,comments,files,invites:apartments.some(a=>a.my_role!=='tenant')?listInvites(db,u):[],cash_collections:recentCollections(db,u),owner_invites:listOwnerInvitesFor(db,u),members:memberDates(db,leases),server_time:nowISO(),business_date:dateInZone(config.timezone),timezone:config.timezone};
 }
 
+// Managers only: bulk cash records of the last 30 days, with the record versions undo expects.
+function recentCollections(db,u) {
+    const since=new Date(Date.now()-30*86400000).toISOString();
+    return db.all(`SELECT c.* FROM cash_collections c JOIN apartments a ON a.id=c.apartment_id WHERE ${managerSql('a')} AND c.created_at>? ORDER BY c.created_at DESC LIMIT 50`,u.id,since)
+        .map(c=>({id:c.id,apartment_id:c.apartment_id,created_by:c.created_by,created_at:c.created_at,paid_on:c.paid_on,note:c.note,total:c.total,entries:JSON.parse(c.entries),versions:Object.fromEntries(JSON.parse(c.snapshot).map(x=>[x.record_id,x.version])),undone_at:c.undone_at}));
+}
 export function validMonth(value,label='Месяц') {
     if(typeof value!=='string'||!/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) fail(400,label+': выберите месяц и год.');
     V.date(value+'-01');return value;
@@ -794,7 +821,7 @@ export function generateRecurring(db,config,time=Date.now()) {
                 if(due<l.start) due=l.start; // First month: no deadline before the lease itself.
                 if(due>end||due>dateInZone(config.timezone,time+r.advance_days*86400000)||ruleCharge(db,base,month)) continue;
                 const dedupe=base.legacy?`charge:${l.id}:${month}`:`recurring:${base.id}:${month}`;
-                insertRecord(db,user,{lease:l,apartment,owner:true,system:true},'charge','pending',r.title+' за '+monthText(month),{amount:r.amount,confirmed:0,due,period:month,payments:[],claims:[],claim:null,rule_id:base.id},'shared',dedupe);
+                insertRecord(db,user,{lease:l,apartment,owner:true,system:true},'charge','pending',r.title+' за '+monthText(month),{amount:r.amount,confirmed:0,due,period:month,payments:[],claims:[],claim:null,...shareSnapshot(db,l,r.amount),rule_id:base.id},'shared',dedupe);
             }
         }
         if(l.start>today||l.end<today) continue;
@@ -814,7 +841,17 @@ export function generateRecurring(db,config,time=Date.now()) {
             detail=`${r.title}\nОсталось подтвердить: ${formatMoney(r.payload.amount-r.payload.confirmed)}. Срок: ${humanDate(r.payload.due)}`;
         }
         if(r.kind==='visit'&&r.status==='accepted') {const diff=Date.parse(r.payload.start)-time;remind=diff>0&&diff<=24*3600000;title='Скоро согласованное посещение';detail=`${r.payload.reason}\n${new Date(r.payload.start).toLocaleString('ru-RU',{timeZone:config.timezone})} (${config.timezone})`;}
-        if(remind) for(const uid of [...managerIds(db,a),...memberIds(db,l.id)]) pushNotification(db,uid,title,`${detail}\n${a.title} · ${unitName(db,l)}`,r.id,`due:${r.id}:${r.version}:${uid}:${today}`,'reminders');
+        if(!remind) continue;
+        const place=`${a.title} · ${unitName(db,l)}`,members=memberIds(db,l.id),key=uid=>`due:${r.id}:${r.version}:${uid}:${today}`;
+        for(const uid of managerIds(db,a)) pushNotification(db,uid,title,`${detail}\n${place}`,r.id,key(uid),'reminders');
+        if(r.kind!=='charge') { for(const uid of members) pushNotification(db,uid,title,`${detail}\n${place}`,r.id,key(uid),'reminders'); continue; }
+        // Tenants hear about their own part only; whoever already paid or handed it over is left alone.
+        const delta=Math.round((Date.parse(r.payload.due)-Date.parse(today))/86400000),shares=sharesOf(r.payload,members);
+        for(const uid of members) {
+            const left=remainingBy(r.payload,uid,members);
+            if(left<=0) continue;
+            pushNotification(db,uid,delta<0?'Проверьте просроченный платёж':'Скоро срок платежа',`${r.title}\nВаша доля: ${formatMoney(shares[uid]||left)}. Осталось оплатить: ${formatMoney(left)}. Срок: ${humanDate(r.payload.due)}\n${place}`,r.id,key(uid),'reminders');
+        }
     }
 }
-const formatMoney=n=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:n%100?2:0}).format(n/100);
+export const formatMoney=n=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:n%100?2:0}).format(n/100);

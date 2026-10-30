@@ -47,7 +47,7 @@ export function toTelegram(message, config) {
     };
 }
 
-const person = from => ({ id: String(from.id), name: [from.first_name, from.last_name].filter(Boolean).join(' ').slice(0, 120) || 'Пользователь Telegram' });
+const person = from => ({ id: String(from.id), name: [from.first_name, from.last_name].filter(Boolean).join(' ').slice(0, 120) || 'Пользователь Telegram', handle: from.username || null });
 const validFrom = from => from && Number.isSafeInteger(from.id) && from.id > 0 && !from.is_bot;
 
 // Reduces a Telegram update to the few events the bot understands, or null.

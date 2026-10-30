@@ -83,6 +83,8 @@ export function ensureIdentitySchema(db) {
         if (!meterColumns.includes('price')) db.exec('ALTER TABLE meters ADD COLUMN price INTEGER');
         if (!columns.includes('tg_id')) db.exec('ALTER TABLE users ADD COLUMN tg_id TEXT');
         if (!columns.includes('tg_bot_enabled')) db.exec('ALTER TABLE users ADD COLUMN tg_bot_enabled INTEGER NOT NULL DEFAULT 0');
+        // @username from Telegram/MAX, refreshed at every login: tells apart two tenants with the same name.
+        if (!columns.includes('handle')) db.exec('ALTER TABLE users ADD COLUMN handle TEXT');
         db.exec(`
             CREATE UNIQUE INDEX IF NOT EXISTS users_tg_id ON users(tg_id);
             CREATE TABLE IF NOT EXISTS account_links(
@@ -133,6 +135,21 @@ export function ensureIdentitySchema(db) {
                 revoked_at TEXT, replaced_by TEXT
             );
             CREATE INDEX IF NOT EXISTS owner_invites_apartment ON owner_invites(apartment_id);
+            -- «Забрал наличные» (0.7): one row per bulk cash collection; snapshot keeps every touched
+            -- record as it was before, so undo restores it while the records are unchanged since.
+            CREATE TABLE IF NOT EXISTS cash_collections(
+                id TEXT PRIMARY KEY,
+                apartment_id TEXT NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
+                created_by TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                paid_on TEXT NOT NULL,
+                note TEXT NOT NULL DEFAULT '',
+                total INTEGER NOT NULL,
+                entries TEXT NOT NULL,
+                snapshot TEXT NOT NULL,
+                undone_at TEXT, undone_by TEXT
+            );
+            CREATE INDEX IF NOT EXISTS cash_collections_apartment ON cash_collections(apartment_id,created_at);
             CREATE TABLE IF NOT EXISTS bot_state(
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL,
