@@ -18,6 +18,8 @@ import { enqueueTelegramUpdate, telegramBotLink } from './telegram.mjs';
 import { telegramHealth } from './telegram-poller.mjs';
 import * as O from './owners.mjs';
 import { createAccountLink, claimAccountLink, PLATFORMS } from './links.mjs';
+import { createUtilities, changeUtilities } from './utilities.mjs';
+import { collectCash, undoCollection } from './cash.mjs';
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../public');
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.png': 'image/png', '.txt': 'text/plain; charset=utf-8', '.json': 'application/json; charset=utf-8', '.woff2': 'font/woff2', '.woff': 'font/woff' };
 const routes = [];
@@ -114,6 +116,11 @@ route('POST', '/api/recurring-rules/:id', ({db,user,params,body,config}) => D.up
 route('POST', '/api/meters/:id', ({ db, user, body, params }) => D.updateMeter(db, user, params.id, body), { mutate: true });
 route('POST', '/api/records', ({ db, user, body, config }) => D.createRecord(db, user, body, config), { mutate: true });
 route('POST', '/api/records/:id/action', ({ db, user, body, params }) => D.actionRecord(db, user, params.id, body), { mutate: true });
+// 0.7 money: utilities split among tenants, bulk cash collection and its undo (any manager).
+route('POST', '/api/apartments/:id/utilities', ({ db, user, body, params }) => createUtilities(db, user, params.id, body), { mutate: true });
+route('POST', '/api/utilities/:group_id', ({ db, user, body, params }) => changeUtilities(db, user, params.group_id, body), { mutate: true });
+route('POST', '/api/apartments/:id/cash-collections', ({ db, user, body, params }) => collectCash(db, user, params.id, body), { mutate: true });
+route('POST', '/api/cash-collections/:id/undo', ({ db, user, body, params }) => undoCollection(db, user, params.id, body), { mutate: true });
 route('POST', '/api/records/:id/comments', ({ db, user, body, params }) => D.addComment(db, user, params.id, body), { mutate: true });
 route('POST', '/api/notifications/read', ({ db, user }) => { db.run('UPDATE notifications SET is_read=1 WHERE user_id=?', user.id); return { ok: true }; }, { mutate: true });
 route('GET', '/api/export', ({ db, user, config }) => ({ ...D.bootstrap(db, user, config, { coverUrls: false }), export_notice: 'Учётные данные приложения. Не банковская выписка, не налоговая декларация и не юридическое подтверждение.' }));
@@ -323,7 +330,8 @@ export function createServer(db, config) {
             const status = e.status || (e.code === 'ENOENT' ? 404 : 500);
             if (status === 500)
                 console.error(JSON.stringify({ level: 'error', requestId, message: e.message }));
-            json(res, status, { error: status === 500 ? 'Внутренняя ошибка. Попробуйте ещё раз.' : e.message, requestId });
+            // Domain errors may carry details the form needs (e.g. the existing utilities group on 409).
+            json(res, status, { error: status === 500 ? 'Внутренняя ошибка. Попробуйте ещё раз.' : e.message, ...(status !== 500 && e.details ? { details: e.details } : {}), requestId });
         }
     });
     server.requestTimeout = 30000;

@@ -67,3 +67,12 @@ export function listOwnerInvitesFor(db, u) {
     .map(r => { const status = ownerInviteStatus(r, now); return { id: r.hash, apartment_id: r.apartment_id, label: r.label, status, created_at: r.created_at, expires: new Date(r.expires).toISOString(), opened_at: r.opened_at, accepted_at: r.accepted_at, accepted_name: r.used_name || '', shareable: !!r.code_enc && (status === 'pending' || status === 'opened') }; })
     .filter(r => r.status !== 'revoked' || Date.parse(r.created_at) > now - 86400000);
 }
+// Apartment-wide money actions (utilities, cash collection): any owner or co-owner.
+// A tenant of the apartment gets 403, anyone else 404 so the apartment stays hidden.
+export function managedApartment(db, u, apartmentId) {
+  const a = db.get('SELECT * FROM apartments WHERE id=?', V.text(apartmentId, 'Квартира', 80));
+  if (a && managerRole(db, a, u.id)) return a;
+  if (a && db.get('SELECT 1 FROM leases l JOIN lease_members lm ON lm.lease_id=l.id WHERE l.apartment_id=? AND lm.user_id=?', a.id, u.id))
+    fail(403, 'Действие доступно собственнику.');
+  fail(404, 'Квартира не найдена.');
+}
