@@ -2,6 +2,7 @@
 // so two tenants means two links; each row shows where that link stands.
 import { esc, icon, button, notice, date, days } from './utils.js';
 import { tenantIds } from './rental-ui.js';
+import { nameIn } from './people.js';
 
 // Statuses of a link (ссылка): said the same way in rows, chips and sheets.
 export const inviteStatusText = { pending: 'Не открыта', opened: 'Открыта', accepted: 'Принята', expired: 'Истекла', revoked: 'Отозвана' };
@@ -24,8 +25,8 @@ function inviteRow(i) {
 export function peopleSection(s, l) {
     const d = s.data, ids = tenantIds(l), members = d.members || [];
     const people = ids.map(id => {
-        const p = d.people.find(x => x.id === id), joined = members.find(m => m.lease_id === l.id && m.user_id === id)?.joined_at;
-        return `<div class="ui-row person-row"><span class="person-avatar">${initial(p?.name)}</span><span class="person-copy"><b>${esc(p?.name || 'Жилец')}${id === d.user.id ? ' <small class="you">· это вы</small>' : ''}</b><small>${joined ? 'В аренде с ' + date(joined, { year: 'numeric' }) : 'Участник аренды'}</small></span></div>`;
+        const who = nameIn(d, id, { fallback: 'Жилец' }), joined = members.find(m => m.lease_id === l.id && m.user_id === id)?.joined_at;
+        return `<div class="ui-row person-row"><span class="person-avatar">${initial(id === d.user.id ? d.user.name : who)}</span><span class="person-copy"><b>${esc(who)}</b><small>${joined ? 'В аренде с ' + date(joined, { year: 'numeric' }) : 'Участник аренды'}</small></span></div>`;
     }).join('');
     const invites = leaseInvites(d, l).filter(i => i.status !== 'accepted');
     const rows = people + invites.map(inviteRow).join('');
@@ -93,7 +94,7 @@ export function inviteOutside(code, config, prefix = 'join_') {
     return `<div class="form-stack"><p>Приглашение открывается в боте Ключей — там вы увидите квартиру и подтвердите присоединение. Выберите свой мессенджер:</p><div class="action-row stacked">${links.map(([label, href, name], n) => `<a class="btn ${n ? 'secondary' : 'primary'} wide" href="${esc(href)}" rel="noopener" data-platform-link="${name}">${label}</a>`).join('')}</div><p class="small-note">Нет мессенджера на этом устройстве? Откройте ссылку на телефоне.</p></div>`;
 }
 export function joinedWelcome(s, l) {
-    const d = s.data, a = d.apartments.find(x => x.id === l.apartment_id), owners = (a?.owners || []).map(o => o.name).join(', ') || d.people.find(p => p.id === a?.owner_id)?.name;
+    const d = s.data, a = d.apartments.find(x => x.id === l.apartment_id), owners = (a?.owners || []).map(o => nameIn(d, o.id, { fallback: o.name })).join(', ') || nameIn(d, a?.owner_id, { fallback: '' });
     return `<div class="form-stack joined-welcome"><div class="invite-success" aria-hidden="true"><span class="success-ring">${icon('check', 30)}</span></div>
         <p class="invite-lead">Вы в аренде «${esc(a?.title || 'Квартира')}».${owners ? `<br><span class="muted">${(a?.owners || []).length > 1 ? 'Собственники' : 'Собственник'} — ${esc(owners)}</span>` : ''}</p>
         <div class="joined-grid">${tile('wallet', 'Платежи', 'Начисления и отметки об оплате', 'finances')}${l.meters_enabled ? tile('meter', 'Счётчики', 'Показания раз в месяц, с фото', 'meters') : ''}${tile('tool', 'Заявки', 'Что-то сломалось — напишите', 'requests')}</div>

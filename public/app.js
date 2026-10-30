@@ -11,6 +11,7 @@ import { welcome, roleView, shell, pageView, model, actionsFor } from './views.j
 import { baselineForm } from './meters-ui.js';
 import { ownerInviteForm, ownerInviteManage, coOwnerManage, leaveForm, ownerInvitePreview, ownerInviteProblem, coOwnerWelcome } from './owners-ui.js';
 import { paymentFields } from './payments-ui.js';
+import { collectionContext, collectionSheet, updateCollection, utilitiesSheet, utilitiesEditSheet, utilitiesCancelSheet, utilitiesVersions, receiveSheet, splitPreview, existingUtilitiesNote, markSeen, freshUtilities, apartmentDebts, isDraft, utilityGroups, monthWord } from './cash-ui.js';
 import { peopleSection, inviteCreateForm, inviteResult, inviteManage, invitePreview, inviteProblem, inviteOutside, joinedWelcome } from './invites-ui.js';
 import { uuid, esc, icon, button, notice, field, textarea, select, uploadField, localISO, today, parseAmount, money, number, date, categoryNames, kindNames } from './utils.js';
 const root = document.querySelector('#root'), modalRoot = document.querySelector('#modal-root'), toastRoot = document.querySelector('#toast-root');
@@ -65,7 +66,9 @@ function initializeGuide() {
     hydrateGuide(state.data?.user);
     syncGuide(state.data?.user).then(updateGuidePrompt);
 }
-function toast(message, error = false) { haptic(error ? 'error' : 'success'); clearTimeout(toastTimer); toastRoot.innerHTML = `<div class="toast ${error ? 'error' : ''}">${icon(error ? 'info' : 'check', 18)}<span>${esc(message)}</span></div>`; toastTimer = setTimeout(() => { const t = toastRoot.firstElementChild; if (!t) return; t.classList.add('out'); toastTimer = setTimeout(() => { if (t.isConnected) t.remove(); }, 210); }, error ? 6500 : 4200); }
+// A toast may carry one action («Отменить»); it then stays longer so there is time to press it.
+let toastAction = null;
+function toast(message, error = false, action = null) { haptic(error ? 'error' : 'success'); clearTimeout(toastTimer); toastAction = action; toastRoot.innerHTML = `<div class="toast ${error ? 'error' : ''}${action ? ' has-action' : ''}">${icon(error ? 'info' : 'check', 18)}<span>${esc(message)}</span>${action ? `<button type="button" class="toast-action" data-act="toast-action">${esc(action.label)}</button>` : ''}</div>`; toastTimer = setTimeout(() => { const t = toastRoot.firstElementChild; if (!t) return; t.classList.add('out'); toastAction = null; toastTimer = setTimeout(() => { if (t.isConnected) t.remove(); }, 210); }, error ? 6500 : action ? 9000 : 4200); }
 function routeFromLocation() { const [, app, page, id] = location.pathname.split('/'); if (app === 'app') {
     state.page = page || 'home';
     state.recordId = page === 'record' ? id : null;
@@ -143,7 +146,7 @@ function setFormError(form, message){ const box=form.querySelector('.form-error'
 function chosenLease() { const m = model(state); if (!m.l)
     throw Error('Сначала добавьте квартиру или присоединитесь по приглашению.'); if (m.l.status === 'ended')
     throw Error('Эта аренда завершена. Откройте активную аренду.'); return m; }
-function leasePicker(currentId) { const { d, u, owner } = model(state); const leases = d.leases.filter(l => l.status !== 'ended' && (owner ? d.apartments.some(a => a.id === l.apartment_id && canManage(a)) : isTenant(l,u.id))); return select('Квартира / аренда', 'lease_id', leases.map(l => [l.id, (d.apartments.find(a => a.id === l.apartment_id)?.title || 'Квартира')+((d.units || []).find(u => u.id === l.unit_id)?.kind === 'room' ? ' · '+unitTitle(l) : '')]), currentId); }
+function leasePicker(currentId) { const { d, u, owner } = model(state); const leases = d.leases.filter(l => l.status !== 'ended' && (owner ? d.apartments.some(a => a.id === l.apartment_id && canManage(a)) : isTenant(l,u.id))); if (leases.length <= 1) return `<input type="hidden" name="lease_id" value="${esc(leases[0]?.id || currentId)}">`; return select('Квартира / аренда', 'lease_id', leases.map(l => [l.id, (d.apartments.find(a => a.id === l.apartment_id)?.title || 'Квартира')+((d.units || []).find(u => u.id === l.unit_id)?.kind === 'room' ? ' · '+unitTitle(l) : '')]), currentId); }
 function timesFields(start = localISO(86400000), end = localISO(86400000 + 3600000)) { return `<div class="form-grid date-grid">${field('Начало', 'start', 'datetime-local', start, 'required')}${field('Окончание', 'end', 'datetime-local', end, 'required')}</div><p class="small-note">Часовой пояс устройства: ${esc(Intl.DateTimeFormat().resolvedOptions().timeZone)}. У другой стороны время отобразится в её часовом поясе.</p>`; }
 function newRecord(kind) {
     const { l, owner } = chosenLease();
@@ -151,7 +154,7 @@ function newRecord(kind) {
     if (kind === 'ticket') {
         title = 'Сообщить о проблеме';
         submit = 'Отправить заявку';
-        fields += field('Что случилось?', 'title', 'text', '', 'placeholder="Например, протекает кран" required maxlength="180"') + select('Где', 'room', [['Кухня', 'Кухня'], ['Гостиная', 'Гостиная'], ['Спальня', 'Спальня'], ['Ванная', 'Ванная'], ['Прихожая', 'Прихожая'], ['Другое', 'Другое']], 'Кухня') + textarea('Подробности', 'description', '', true) + select('Приоритет', 'priority', [['normal', 'Обычная'], ['urgent', 'Срочная']], 'normal') + uploadField() + notice('При угрозе жизни или имуществу не ждите ответа в приложении — обратитесь в экстренные службы.', 'amber');
+        fields += field('Что случилось?', 'title', 'text', '', 'placeholder="Например, протекает кран" required maxlength="180"') + `<label class="field"><span>Где</span><select name="room" required><option value="" disabled selected>Выберите помещение</option>${['Кухня', 'Гостиная', 'Спальня', 'Ванная', 'Прихожая', 'Другое'].map(x => `<option value="${x}">${x}</option>`).join('')}</select></label>` + textarea('Подробности', 'description', '', true) + `<div class="field"><span id="priority-label">Приоритет</span><div class="method-switch" role="radiogroup" aria-labelledby="priority-label"><label><input type="radio" name="priority" value="normal" checked><span>Обычная</span></label><label><input type="radio" name="priority" value="urgent"><span>${icon('info', 18)} Срочная</span></label></div></div>` + uploadField() + notice('При угрозе жизни или имуществу не ждите ответа в приложении — обратитесь в экстренные службы.', 'amber');
     }
     if (kind === 'purchase') {
         title = 'Добавить покупку';
@@ -166,7 +169,8 @@ function newRecord(kind) {
     if (kind === 'charge') {
         title = 'Добавить начисление';
         submit = 'Создать начисление';
-        fields += field('Название', 'title', 'text', 'Аренда', 'required maxlength="180"') + field('Сумма, ₽', 'amount', 'text', String(l.rent / 100), 'inputmode="decimal" required') + `<div class="form-grid">${field('За какой месяц', 'period', 'month', today().slice(0, 7), 'required')}${field('Оплатить до', 'due', 'date', dueForMonth(today().slice(0,7),l.current_due_day??l.due_day), 'required')}</div>` + '<label class="checkbox-field"><input type="checkbox" name="repeat"> Повторять ежемесячно</label>'+field('Создавать за сколько дней до оплаты','advance_days','number',14,'min="1" max="60" required')+notice('Это общая сумма для всех жильцов выбранной аренды, не сумма на каждого. Ежемесячное правило можно изменить в разделе «Регулярные платежи». Деньги переводятся вне приложения.');
+        const ym = today().slice(0, 7);
+        fields += field('Название', 'title', 'text', 'Аренда за ' + monthLabel(ym), 'required maxlength="180" data-auto-title="Аренда"') + field('Сумма, ₽', 'amount', 'text', String(l.rent / 100), 'inputmode="decimal" required') + `<div class="form-grid">${field('За какой месяц', 'period', 'month', ym, 'required data-title-month')}${field('Оплатить до', 'due', 'date', dueForMonth(ym,l.current_due_day??l.due_day), 'required')}</div>` + '<label class="checkbox-field"><input type="checkbox" name="repeat" data-repeat> Повторять ежемесячно</label><div data-advance hidden>'+field('Создавать за сколько дней до оплаты','advance_days','number',14,'min="1" max="60"')+'</div>'+notice('Это общая сумма для всех жильцов выбранной аренды, не сумма на каждого. Ежемесячное правило можно изменить в разделе «Регулярные платежи». Деньги переводятся вне приложения.');
     }
     if (kind === 'document') {
         title = 'Добавить документ';
@@ -279,7 +283,7 @@ async function deleteApartmentModal(id) {
     modal('Удалить квартиру?', apartmentDeleteDialog(preview), { initialFocus: '[data-delete-cancel]', descriptionId: 'delete-apartment-question' });
     if (returnFocus) previousFocus = returnFocus;
 }
-function actionModal(id, action, claimId='') {
+function actionModal(id, action, claimId='', preset={}) {
     const r = state.data.records.find(r => r.id === id);
     if (!r)
         throw Error('Запись не найдена.');
@@ -294,7 +298,9 @@ function actionModal(id, action, claimId='') {
     if (['resolve', 'reopen', 'reject'].includes(action) && r.kind !== 'charge')
         fields += textarea(action === 'resolve' ? 'Что сделано' : action === 'reopen' ? 'Что осталось исправить' : 'Причина / комментарий', 'note', '', true);
     if (r.kind === 'charge' && ['claim', 'record_payment', 'confirm', 'reject'].includes(action))
-        fields += paymentFields(r, action, state, claimId);
+        fields += paymentFields(r, action, state, claimId, preset);
+    if (action === 'approve_cash')
+        fields += textarea('Комментарий (необязательно)', 'note') + notice('Покупка будет одобрена, а компенсация отмечена как возвращённая наличными. Деньги передаются вне приложения.', 'green', 'wallet');
     if (action === 'compensate')
         fields += textarea('Комментарий к компенсации', 'note') + notice('Подтверждайте только после фактического возврата денег. Эта кнопка не выполняет перевод.', 'amber');
     if (action === 'complete' && r.kind === 'termination')
@@ -326,6 +332,45 @@ else {
     a.click();
 } }
 function showHelp() { modal('Как пользоваться Ключами', guideContent(state.data.user, state.config)); }
+const groupApartment = group => state.data.records.find(r => r.payload?.group_id === group)?.apartment_id || '';
+// Cards that leave (a seen utilities card) fade, then fold their height, so nothing below jumps.
+function fadeAway(card) {
+    if (!card) { render(); return; }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { render(); return; }
+    card.style.height = card.offsetHeight + 'px'; card.classList.add('leaving');
+    requestAnimationFrame(() => requestAnimationFrame(() => card.classList.add('folded')));
+    setTimeout(render, 420);
+}
+// One-tap «Отдал наличными» and its undo: the pill keeps its size, only the face cross-fades.
+async function pillAction(el, give) {
+    const pill = el.closest('.cash-pill'), id = el.dataset.id, version = Number(el.dataset.version);
+    if (!pill || pill.getAttribute('aria-busy') === 'true') return;
+    pill.setAttribute('aria-busy', 'true');
+    try {
+        const body = give ? { action: 'claim', version, method: 'cash' } : { action: 'withdraw', version, claim_id: el.dataset.claimId };
+        const r = await post('/records/' + encodeURIComponent(id) + '/action', body, el.dataset.key);
+        const i = state.data.records.findIndex(x => x.id === r.id); if (i >= 0) state.data.records[i] = r;
+        root.querySelectorAll(`.cash-pill[data-pill="${CSS.escape(id)}"]`).forEach(x => setPill(x, give ? 'claimed' : 'open'));
+        toast(give ? 'Отметили. Собственник подтвердит, когда получит' : 'Отметка отменена');
+        setTimeout(() => reload().catch(() => render()), 260);
+    } catch (e) {
+        toast(e.message, true);
+        if (e.status === 409) reload().catch(() => {});
+    } finally { pill.removeAttribute('aria-busy'); }
+}
+function setPill(pill, next) {
+    pill.dataset.state = next;
+    pill.querySelectorAll('.cash-face').forEach(face => { const on = face.classList.contains(next === 'open' ? 'cash-give' : 'cash-done'); face.toggleAttribute('inert', !on); face.setAttribute('aria-hidden', on ? 'false' : 'true'); face.tabIndex = on ? 0 : -1; });
+    pill.querySelector(next === 'open' ? '.cash-give' : '.cash-done')?.focus({ preventScroll: true });
+}
+function checkUtilitiesMonth(form) {
+    if (!form || form.dataset.quick) return;
+    const a = state.data.apartments.find(x => x.id === form.dataset.apartment), box = form.querySelector('[data-utilities-exists]'), input = form.querySelector('[data-utilities-month]');
+    if (!a || !box || !input) return;
+    let month = ''; try { month = parseDisplayDate(input.value, 'month'); } catch { /* typed halfway */ }
+    box.innerHTML = month ? existingUtilitiesNote(state.data, a, month) : '';
+    form.querySelectorAll('button[type=submit]').forEach(b => { b.disabled = !!box.innerHTML; });
+}
 async function clickAction(el) {
     const act = el.dataset.act;
     if (act === 'noop')
@@ -441,7 +486,46 @@ async function clickAction(el) {
         return;
     }
     if (act === 'record-action') {
-        actionModal(el.dataset.id, el.dataset.action,el.dataset.claimId);
+        actionModal(el.dataset.id, el.dataset.action,el.dataset.claimId,{payer:el.dataset.payer||''});
+        return;
+    }
+    if (act === 'toast-action') {
+        const action = toastAction; toastAction = null; toastRoot.innerHTML = '';
+        if (action) await action.run();
+        return;
+    }
+    if (act === 'cash-claim' || act === 'cash-withdraw') { await pillAction(el, act === 'cash-claim'); return; }
+    if (act === 'fresh-ok') { for (const { r } of freshUtilities(state.data)) markSeen(state.data, r); fadeAway(el.closest('.fresh-card')); return; }
+    if (act === 'cash-receive') {
+        const r = state.data.records.find(x => x.id === el.dataset.id);
+        if (!r) throw Error('Запись не найдена. Обновите экран.');
+        modal('Получил наличные', receiveSheet(state.data, r, el.dataset.person), { initialFocus: 'input[name=amount]' });
+        return;
+    }
+    if (act === 'cash-collect') {
+        let apartmentId = el.dataset.apartment;
+        if (!apartmentId) apartmentId = state.data.apartments.filter(a => isMainOwner(a)).find(a => apartmentDebts(state.data, a).length)?.id || '';
+        if (!apartmentId) { toast('Долгов по наличным нет — всё собрано'); return; }
+        const ctx = collectionContext(state.data, apartmentId, el.dataset.tenant || '*');
+        modal(ctx.entries.length === 1 ? 'Забрал наличные' : 'Забрал у всех', collectionSheet(ctx), { collect: ctx });
+        return;
+    }
+    if (act === 'utilities') {
+        const a = state.data.apartments.find(x => x.id === (el.dataset.apartment || model(state).a?.id));
+        if (!a || !canManage(a)) throw Error('Коммуналку вносят собственники квартиры.');
+        modal('Коммуналка', utilitiesSheet(state.data, a), { initialFocus: '[data-utilities-amount]' });
+        checkUtilitiesMonth(modalRoot.querySelector('[data-form=utilities]'));
+        return;
+    }
+    if (act === 'utilities-edit') { modal('Изменить коммуналку', utilitiesEditSheet(state.data, el.dataset.group), { initialFocus: '[data-utilities-amount]' }); return; }
+    if (act === 'utilities-cancel') { modal('Отменить коммуналку?', utilitiesCancelSheet(state.data, el.dataset.group)); return; }
+    if (act === 'utilities-decide') {
+        const group = el.dataset.group;
+        if (el.dataset.decision === 'decline') { modal('Отклонить?', formContent('utilities-decline', notice(utilityGroups(state.data, groupApartment(group)).find(g => g.id === group)?.draft ? 'Черновик будет удалён, жильцы его не увидят. Месяц можно внести заново.' : 'Предложенное изменение не применится, останется прежняя сумма.', 'amber') + '<label class="field"><span>Причина (необязательно)</span><input name="note" type="text" maxlength="200"></label>', 'Отклонить', `data-group="${esc(group)}"`)); return; }
+        await post('/utilities/' + encodeURIComponent(group), { action: 'approve', versions: utilitiesVersions(state.data, group) }, 'approve-' + group + '-' + Object.values(utilitiesVersions(state.data, group)).join('.'));
+        if (state.modal) closeModal();
+        await reload(); render();
+        toast('Коммуналка отправлена жильцам');
         return;
     }
     if (act === 'file') {
@@ -823,14 +907,46 @@ async function submit(form) {
         }
         if (type === 'record-action') {
             const record = state.data.records.find(r => r.id === form.dataset.id);
-            const body = { action: form.dataset.action, version: Number(form.dataset.version), note: data.note || '', ...(form.dataset.claimId?{claim_id:form.dataset.claimId}:{}),...(data.payer_id?{payer_id:data.payer_id}:{}),...(data.method?{method:data.method}:{}),...(data.paid_on?{paid_on:data.paid_on}:{}) };
+            const body = { action: form.dataset.action, version: Number(form.dataset.version), note: data.note || '', ...(form.dataset.claimId?{claim_id:form.dataset.claimId}:{}),...(data.payer_id?{payer_id:data.payer_id}:{}),...(data.for_user_id?{for_user_id:data.for_user_id}:{}),...(data.method?{method:data.method}:{}),...(data.paid_on?{paid_on:data.paid_on}:{}) };
             if (data.amount !== undefined)
                 body.amount = parseAmount(data.amount);
             if (data.start)
                 Object.assign(body, { start: new Date(data.start).toISOString(), end: new Date(data.end).toISOString() });
             body.files = await collectFiles(form, record.lease_id);
-            result = await post('/records/' + record.id + '/action', body, key);
-            message = 'Статус обновлён';
+            if (body.action === 'approve_cash') {
+                // Two ordinary steps, no new server action: approve, then mark the cash refund.
+                const approved = await post('/records/' + record.id + '/action', { action: 'approve', version: body.version, note: '' }, key + '-approve');
+                result = await post('/records/' + record.id + '/action', { action: 'compensate', version: approved.version, note: body.note || 'Вернул наличными' }, key + '-refund');
+                message = 'Покупка одобрена, компенсация отмечена';
+            } else {
+                result = await post('/records/' + record.id + '/action', body, key);
+                message = body.action === 'record_payment' ? 'Получение записано' : body.action === 'claim' ? 'Отметили. Собственник подтвердит, когда получит' : 'Статус обновлён';
+            }
+        }
+        if (type === 'cash-collect') {
+            const ctx = state.modal?.collect, entries = ctx && updateCollection(form, ctx, parseAmount);
+            if (!entries) throw Error('Проверьте суммы: у кого и сколько получено.');
+            const done = await post('/apartments/' + encodeURIComponent(form.dataset.apartment) + '/cash-collections', { entries, paid_on: data.paid_on }, key);
+            if (state.modal) state.modal.busy = false;
+            closeModal(); await reload(); render();
+            toast(`Записано ${money(done.total)} наличными`, false, { label: 'Отменить', run: async () => {
+                try { await post('/cash-collections/' + encodeURIComponent(done.collection_id) + '/undo', { versions: done.versions }, 'undo-' + done.collection_id); await reload(); render(); toast('Запись о наличных отменена'); }
+                catch (e) { toast(e.message, true); }
+            } });
+            return;
+        }
+        if (type === 'utilities') {
+            const a = state.data.apartments.find(x => x.id === form.dataset.apartment), publish = form.dataset.publish === '1' && isMainOwner(a);
+            if (!data.amount) throw Error('Впишите сумму за месяц.');
+            result = await post('/apartments/' + encodeURIComponent(a.id) + '/utilities', { period: data.period, amount: parseAmount(data.amount), due: data.due, ...(publish ? { publish: true } : {}) }, key);
+            message = publish ? `Коммуналка за ${monthWord(data.period)} отправлена жильцам` : isMainOwner(a) ? 'Черновик сохранён. Жильцы увидят после отправки' : 'Сохранено. ' + (a.owners || []).find(o => o.role === 'owner')?.name + ' проверит и отправит жильцам';
+            result = { id: result.records?.[0]?.id };
+        }
+        if (type === 'utilities-edit' || type === 'utilities-cancel' || type === 'utilities-decline') {
+            const group = form.dataset.group, a = state.data.apartments.find(x => x.id === groupApartment(group)), wasDraft = utilityGroups(state.data, a.id).find(g => g.id === group)?.draft;
+            const body = type === 'utilities-edit' ? { action: 'update', amount: parseAmount(data.amount), due: data.due } : { action: type === 'utilities-cancel' ? 'cancel' : 'decline', note: data.note || '' };
+            await post('/utilities/' + encodeURIComponent(group), { ...body, versions: utilitiesVersions(state.data, group) }, key);
+            message = type === 'utilities-cancel' ? 'Коммуналка отменена' : type === 'utilities-decline' ? 'Отклонено' : !isMainOwner(a) && !wasDraft ? 'Изменение отправлено на одобрение' : 'Коммуналка изменена';
         }
         if (type === 'readings') {
             if (!form.querySelector('input[type=file]')?.files.length) throw Error('Приложите фото счётчиков — по нему собственник сверит цифры.');
@@ -986,6 +1102,11 @@ async function submit(form) {
             try {
                 const fresh = await request('/state');
                 state.data = fresh;
+                if (type === 'utilities' && e.details?.group_id) {
+                    const box = form.querySelector('[data-utilities-exists]'), a = fresh.apartments.find(x => x.id === form.dataset.apartment);
+                    if (box && a) { box.innerHTML = existingUtilitiesNote(fresh, a, e.details.period); if (errors) errors.textContent = ''; }
+                }
+                if (type === 'cash-collect' && !form.querySelector('[data-act=cash-collect]')) form.querySelector('.form-error')?.insertAdjacentHTML('afterend', button('Пересчитать по новым данным', 'cash-collect', `data-apartment="${esc(form.dataset.apartment)}" data-tenant="${state.modal?.collect?.entries.length === 1 ? esc(state.modal.collect.entries[0].id) : '*'}"`, 'secondary wide'));
                 if (form.dataset.form === 'record-action') {
                     const r = fresh.records.find(r => r.id === form.dataset.id);
                     if (r)
@@ -1021,7 +1142,7 @@ finally {
 } });
 document.addEventListener('submit', e => { const form = e.target.closest('[data-form]'); if (!form)
     return; e.preventDefault(); if (form.dataset.submitting)
-    return; form.dataset.submitting = '1'; submit(form).finally(() => delete form.dataset.submitting); });
+    return; if (e.submitter?.dataset.publish !== undefined) form.dataset.publish = e.submitter.dataset.publish; form.dataset.submitting = '1'; submit(form).finally(() => delete form.dataset.submitting); });
 document.addEventListener('change', e => { const el = e.target; if (el.closest('[data-cover-editor]')) { handleCoverChange(el).catch(err => toast(err.message, true)); } if (el.dataset.change === 'scope') {
     state.unitScope='';
     state.scope = el.value;
@@ -1030,6 +1151,8 @@ document.addEventListener('change', e => { const el = e.target; if (el.closest('
     state.leaseId = el.value;
     render();
 } if(el.dataset.change==='theme')setTheme(el.value);
+if(el.matches('[data-repeat]')){const box=el.form.querySelector('[data-advance]');box.hidden=!el.checked;box.querySelector('input').required=el.checked;}
+if(el.matches('[data-payer-select]')){const left=el.selectedOptions[0]?.dataset.left,amount=el.form.elements.amount;if(left&&amount)amount.value=left;}
 if(el.name==='rental_mode')el.form.querySelector('[data-room-name]').hidden=el.value!=='rooms';
 if(el.name==='kind'&&el.form?.dataset.form==='create-meter'){el.form.querySelector('[data-electric-scheme]').hidden=el.value!=='electricity';el.form.elements.unit.value=el.value==='electricity'?'кВт·ч':el.value==='heating'?'Гкал':el.value==='other'?'ед.':'м³';}
 if (el.type === 'file') {
@@ -1039,7 +1162,18 @@ if (el.type === 'file') {
 } const form = el.closest('form'); if (form)
     delete form.dataset.key; });
 document.addEventListener('input', e => { const f = e.target.closest('form'); if (f)
-    delete f.dataset.key; });
+    delete f.dataset.key; if (f) liveForm(f, e.target); });
+// Sheets that answer while typing: utilities split, collection allocation, the charge title.
+function liveForm(f, el) {
+    if (el.matches('[data-utilities-amount]')) {
+        const out = f.querySelector('[data-split-preview]'), a = state.data?.apartments.find(x => x.id === f.dataset.apartment);
+        if (out && a) { let v = 0; try { v = el.value.trim() ? parseAmount(el.value) : 0; } catch { v = 0; } out.textContent = splitPreview(state.data, a, v); }
+    }
+    if (el.matches('[data-utilities-month]')) checkUtilitiesMonth(f);
+    if (el.matches('[data-collect-amount]') && state.modal?.collect) updateCollection(f, state.modal.collect, parseAmount);
+    if (el.matches('[data-auto-title]')) el.dataset.edited = '1';
+    if (el.matches('[data-title-month]')) { const t = f.querySelector('[data-auto-title]'); let ym = ''; try { ym = parseDisplayDate(el.value, 'month'); } catch { /* typing */ } if (t && ym && !t.dataset.edited) t.value = t.dataset.autoTitle + ' за ' + monthLabel(ym); }
+}
 document.addEventListener('keydown', e => { if (!state.modal)
     return; if (e.key === 'Escape')
     closeModal(); if (e.key === 'Tab') {

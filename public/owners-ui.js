@@ -3,6 +3,7 @@
 import { esc, icon, button, notice, date } from './utils.js';
 import { isMainOwner } from './rental-ui.js';
 import { inviteStatusText } from './invites-ui.js';
+import { nameIn } from './people.js';
 
 const initial = name => esc(String(name || '?').trim()[0] || '?');
 const chip = (cls, text) => `<span class="badge ${cls}">${esc(text)}</span>`;
@@ -13,8 +14,8 @@ const statusCls = { pending: 'amber', opened: 'blue', accepted: 'green', expired
 export function ownersSection(s, a) {
     const d = s.data, me = d.user.id, main = isMainOwner(a), list = a.owners || [];
     const owners = list.map(o => {
-        const manage = main && o.role === 'co_owner', tag = manage ? `button type="button" data-act="co-owner-manage" data-id="${esc(o.id)}"` : 'div';
-        return `<${tag} class="ui-row person-row owner-row${manage ? ' invite-row' : ''}"><span class="person-avatar">${initial(o.name)}</span><span class="person-copy"><b>${esc(o.name)}${o.id === me ? ' <small class="you">· это вы</small>' : ''}</b><small>${o.role === 'owner' ? 'Главный владелец' : 'Совладелец · с ' + date(o.since, { year: 'numeric' })}</small></span>${manage ? icon('arrow', 16) : ''}</${manage ? 'button' : 'div'}>`;
+        const manage = main && o.role === 'co_owner', who = nameIn(d, o.id, { fallback: o.name }), tag = manage ? `button type="button" data-act="co-owner-manage" data-id="${esc(o.id)}"` : 'div';
+        return `<${tag} class="ui-row person-row owner-row${manage ? ' invite-row' : ''}"><span class="person-avatar">${initial(o.id === me ? o.name : who)}</span><span class="person-copy"><b>${esc(who)}</b><small>${o.role === 'owner' ? 'Главный владелец' : 'Совладелец · с ' + date(o.since, { year: 'numeric' })}</small></span>${manage ? icon('arrow', 16) : ''}</${manage ? 'button' : 'div'}>`;
     }).join('');
     const links = main ? (d.owner_invites || []).filter(i => i.apartment_id === a.id && i.status !== 'accepted').map(i => `<button type="button" class="ui-row person-row invite-row" data-act="owner-invite-manage" data-id="${esc(i.id)}" data-status="${i.status}"><span class="person-avatar invite-avatar" data-status="${i.status}">${icon('link', 18)}</span><span class="person-copy"><b>${i.label ? esc(i.label) : 'Ссылка для совладельца'}</b><small>${i.status === 'pending' ? 'Действует до ' + date(i.expires) : i.status === 'opened' ? 'Открыта в боте, ещё не подтверждена' : i.status === 'expired' ? 'Срок вышел — сделайте новую' : 'Ссылка больше не работает'}</small></span>${chip(statusCls[i.status], inviteStatusText[i.status])}${icon('arrow', 16)}</button>`).join('') : '';
     const action = main ? button(icon('invite', 19) + ' Пригласить совладельца', 'owner-invite', `data-id="${esc(a.id)}"`, list.length > 1 || links ? 'secondary wide' : 'primary wide')
