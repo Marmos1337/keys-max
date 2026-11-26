@@ -4,7 +4,7 @@ import * as V from './validate.mjs';
 import { bindCover, presentApartment } from './covers.mjs';
 import { isMember, memberIds, unitName, createUnit, managerRole, managerIds, managerSql, listOwnerInvitesFor } from './rental.mjs';
 import { sealCode, openCode } from './invite-codes.mjs';
-import { equalSplit, sharesOf, remainingBy, debtOf } from '../public/shares.js';
+import { equalSplit, sharesOf, remainingBy, debtOf, claimsOf } from '../public/shares.js';
 export { isMember, memberIds } from './rental.mjs';
 export const nowISO = () => new Date().toISOString();
 // A co-owner's proposed utilities change is for managers only; tenants keep seeing the approved amount.
@@ -25,7 +25,9 @@ export function recordAccess(db, u, id, write = false) { const r = decode(db.get
     fail(404, 'Запись не найдена.'); const ctx = leaseAccess(db, u, r.lease_id, { write }); if (!ctx.owner && r.visibility === 'owner')
     fail(404, 'Запись не найдена.'); return { ...ctx, record: r }; }
 export function event(db, u, lease, title, recordId = null, visibility = 'shared') { db.run('INSERT INTO events VALUES(?,?,?,?,?,?,?,?)', randomUUID(), lease.apartment_id, lease.id, u.id, title, recordId, visibility, nowISO()); }
-export function pushNotification(db, userId, title, text, recordId = null, dedupe = null, category = 'events', extra = {}) {
+export function pushNotification(db, userId, title, text, recordId = null, dedupe = null, category = 'events', options = {}) {
+    // notBefore (ms): a scheduled message created at night waits in the outbox until the morning.
+    const { notBefore = 0, ...extra } = options;
     if (!userId)
         return;
     const user = db.get('SELECT * FROM users WHERE id=?', userId);
@@ -39,26 +41,30 @@ export function pushNotification(db, userId, title, text, recordId = null, dedup
         const body = { title, text, recordId, category, ...extra };
         // One outbox row per messenger, so a failure in one never repeats delivery in the other.
         if (user.max_id && user.bot_enabled)
-            db.run('INSERT INTO outbox(id,user_id,body,created_at) VALUES(?,?,?,?)', randomUUID(), userId, JSON.stringify(body), nowISO());
+            db.run('INSERT INTO outbox(id,user_id,body,created_at,next_attempt) VALUES(?,?,?,?,?)', randomUUID(), userId, JSON.stringify(body), nowISO(), notBefore);
         if (user.tg_id && user.tg_bot_enabled)
-            db.run('INSERT INTO outbox(id,user_id,body,created_at) VALUES(?,?,?,?)', randomUUID(), userId, JSON.stringify({ ...body, channel: 'telegram' }), nowISO());
+            db.run('INSERT INTO outbox(id,user_id,body,created_at,next_attempt) VALUES(?,?,?,?,?)', randomUUID(), userId, JSON.stringify({ ...body, channel: 'telegram' }), nowISO(), notBefore);
     }
 }
-export function notifyOther(db, u, ctx, title, recordId, visibility = 'shared', detail = '', extra = {}) {
+export function notifyOther(db, u, ctx, title, recordId, visibility = 'shared', detail = '', options = {}) {
     if (visibility === 'owner') return;
+    // audience 'managers': things only an owner acts on (a tenant's «передал / перевёл — подтвердите»).
+    const { audience = 'all', ...extra } = options;
     // Every owner of the apartment and every tenant of the lease, each once, never the actor.
-    const targets = new Set([...managerIds(db,ctx.apartment), ...memberIds(db,ctx.lease.id)]);
+    const targets = new Set([...managerIds(db,ctx.apartment), ...(audience === 'managers' ? [] : memberIds(db,ctx.lease.id))]);
     targets.delete(u.id);
     // Scheduled items (monthly bills) come from rules the owners set up: tell the tenants, not every owner.
     if (ctx.system) for (const id of managerIds(db,ctx.apartment)) targets.delete(id);
+    if (ctx.system && ctx.notBefore) extra.notBefore = ctx.notBefore;
     const place = `${ctx.apartment.title} · ${unitName(db,ctx.lease)}`;
     if(!detail&&recordId) {
         const r=decode(db.get('SELECT * FROM records WHERE id=?',recordId)),p=r?.payload||{};
-        detail=`${whoName(u)}: ${title}`;
+        // A scheduled bill is not the owner's message; a label that already names the actor is not repeated.
+        detail=ctx.system?`Новое начисление: ${title}`:title.startsWith(whoName(u))?title:`${whoName(u)}: ${title}`;
         if(p.description) detail+='\n'+p.description.slice(0,700);
         if(r?.kind==='charge') detail+=`\nНачислено: ${formatMoney(p.amount)}. Подтверждено: ${formatMoney(p.confirmed)}. Оплатить до ${humanDate(p.due)}`;
         if(r?.kind==='visit') detail+='\n'+p.reason+'\n'+new Date(p.start).toLocaleString('ru-RU',{timeZone:process.env.TZ||'Europe/Moscow'});
-        if(r?.kind==='reading') detail+='\n'+(p.values||[]).map(v=>`${v.label}: ${v.value/1000} ${v.unit}`).join('\n');
+        if(r?.kind==='reading') detail+='\n'+((p.values||[]).length?p.values.map(v=>`${v.label}: ${v.value/1000} ${v.unit}`).join('\n'):`Фото счётчиков: ${db.get('SELECT COUNT(*) AS n FROM files WHERE record_id=?',recordId).n}`);
         if(r?.kind==='purchase') detail+='\n'+formatMoney(p.amount);
         if(r?.kind==='ticket'&&p.result) detail+='\nРезультат: '+p.result;
     }
@@ -331,7 +337,7 @@ export function actionRecord(db, u, id, b) {
         fail(403, 'Действие доступно арендатору.'); };
     const inStatus = (list) => { if (!list.includes(r.status))
         deny(); };
-    let label = '';
+    let label = '', audience = 'all', helped = null;
     if (r.kind === 'ticket') {
         if (act === 'start') {
             owner();
@@ -443,6 +449,8 @@ export function actionRecord(db, u, id, b) {
             p.claims.push(claim);
             const whose=target===u.id?'':' за '+(db.get('SELECT name FROM users WHERE id=?',target)?.name||'другого жильца');
             label=`${whoName(u)}: ${claim.method==='cash'?'передал наличными':'перевёл'} ${formatMoney(claim.amount)}${whose} — подтвердите получение`;
+            // Only an owner confirms receipt; the tenant paid for (if not the author) hears it separately.
+            audience='managers';if(target!==u.id) helped={id:target,title:`${whoName(u)} отметил оплату за вас`,text:`${r.title}: ${claim.method==='cash'?'передал наличными':'перевёл'} ${formatMoney(claim.amount)} за вас. Ждёт подтверждения собственника.`};
         } else if(act==='withdraw') {
             tenant();
             const claim=p.claims.find(c=>c.id===b.claim_id);
@@ -451,6 +459,7 @@ export function actionRecord(db, u, id, b) {
             p.claims=p.claims.filter(c=>c.id!==claim.id);
             p.withdrawn=[...(p.withdrawn||[]),{...claim,withdrawn_at:nowISO()}];
             label=`${whoName(u)}: отметка об оплате ${formatMoney(claim.amount)} отменена`;
+            audience='managers';if((claim.for_user_id??claim.user_id)!==u.id) helped={id:claim.for_user_id,title:`${whoName(u)} отменил отметку об оплате за вас`,text:`${r.title}: отметка о ${formatMoney(claim.amount)} отменена, ваша доля снова ждёт оплаты.`};
         } else if(act==='confirm'||act==='reject') {
             owner();
             const claim=b.claim_id?p.claims.find(c=>c.id===b.claim_id):p.claims[0];
@@ -554,7 +563,8 @@ export function actionRecord(db, u, id, b) {
     db.run('UPDATE records SET status=?,payload=?,version=version+1,updated_at=? WHERE id=? AND version=?', status, JSON.stringify(p), nowISO(), r.id, version);
     const title = label || `${r.title}: ${statusText[status] || status}`;
     event(db, u, ctx.lease, title, r.id, r.visibility);
-    notifyOther(db, u, ctx, title, r.id, r.visibility);
+    notifyOther(db, u, ctx, title, r.id, r.visibility, '', { audience });
+    if (helped) pushNotification(db, helped.id, helped.title, `${helped.text}\n${ctx.apartment.title} · ${unitName(db,ctx.lease)}`, r.id);
     const fresh = decode(db.get('SELECT * FROM records WHERE id=?', r.id));
     return ctx.owner ? fresh : hidePending(fresh);
 }
@@ -599,9 +609,30 @@ export function createMeter(db,u,leaseId,b) {
     notifyMeterUsers(db,u,lease,scope,'Настроены счётчики: '+label);
     return {meters:ids.map(id=>db.get('SELECT * FROM meters WHERE id=?',id))};
 }
+// Setting up meters is several quick edits; tenants get one message a few minutes after the last
+// one: the current set, and a request for this month's readings while they are still missing.
 function notifyMeterUsers(db,u,lease,scope,title) {
+    const zone=process.env.TZ||'Europe/Moscow',ym=dateInZone(zone).slice(0,7),notBefore=Math.max(Date.now()+5*60000,daytimeAt({timezone:zone})||0);
     const leases=scope==='apartment'?db.all("SELECT * FROM leases WHERE apartment_id=? AND status!='ended'",lease.apartment_id):[lease];
-    for(const l of leases) for(const id of memberIds(db,l.id)) if(id!==u.id) pushNotification(db,id,title,'Проверьте актуальный набор счётчиков перед передачей показаний.',null,null,'events',{target:'m_'+l.id});
+    for(const l of leases) {
+        const meters=visibleMeters(db,l),missing=l.meters_enabled?meters.filter(m=>!db.get('SELECT 1 FROM meter_values WHERE meter_id=? AND period=?',m.id,ym)):[];
+        const ask=missing.length&&l.start<=dateInZone(zone);
+        for(const id of memberIds(db,l.id)) {
+            if(id===u.id) continue;
+            // The previous message of this burst has not gone out yet: replace it with the fresh one.
+            for(const n of db.all("SELECT id,dedupe FROM notifications WHERE user_id=? AND dedupe LIKE ?",id,`meter-setup:${l.id}:${id}:%`)) {
+                const queued=db.all("SELECT id FROM outbox WHERE user_id=? AND status='queued' AND json_extract(body,'$.setup')=?",id,n.dedupe);
+                if(!queued.length) continue;
+                for(const q of queued) db.run('DELETE FROM outbox WHERE id=?',q.id);
+                db.run('DELETE FROM notifications WHERE id=?',n.id);
+            }
+            const key=`meter-setup:${l.id}:${id}:${randomUUID()}`;
+            pushNotification(db,id,ask?`Пора передать показания за ${monthText(ym)}`:title,
+                ask?`Собственник настроил счётчики. Сфотографируйте их и отправьте цифры с фото в Ключах:\n${missing.map(m=>'· '+m.label).join('\n')}`
+                   :!l.meters_enabled?'Собственник отключил передачу показаний: напоминаний о счётчиках не будет.':meters.length?`Счётчики в Ключах:\n${meters.map(m=>'· '+m.label).join('\n')}`:'Счётчиков пока нет.',
+                null,key,'events',{target:'m_'+l.id,notBefore,setup:key});
+        }
+    }
 }
 export function updateMeter(db,u,id,b) {
     const m=db.get('SELECT * FROM meters WHERE id=?',id);if(!m) fail(404,'Счётчик не найден.');
@@ -829,9 +860,19 @@ export function monthEndDigest(db,config,time=Date.now()) {
         pushNotification(db,uid,`Итог за ${monthText(ym)}`,`Итог за ${monthText(ym)}: ${head} — ваша доля к оплате ${formatMoney(debt.total)}\n${lines.join('\n')}`,null,`digest:${uid}:${ym}`,'reminders');
     }
 }
+// 0 inside the daytime window of the business timezone, otherwise the moment it next opens.
+// Scheduled messages (reminders, monthly bills) never arrive at night.
+export function daytimeAt(config,time=Date.now()) {
+    const from=config.notifyFrom??Number(process.env.KEYS_NOTIFY_FROM??9),to=config.notifyTo??Number(process.env.KEYS_NOTIFY_TO??22);
+    if(from<=0&&to>=24) return 0;
+    const [h,m]=new Intl.DateTimeFormat('en-GB',{timeZone:config.timezone,hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(time)).split(':').map(Number);
+    if(h>=from&&h<to) return 0;
+    return time-time%60000+((h<from?from-h:24-h+from)*60-m)*60000;
+}
 export function generateRecurring(db,config,time=Date.now()) {
-    const today=dateInZone(config.timezone,time),ym=today.slice(0,7),day=Number(today.slice(8));
+    const today=dateInZone(config.timezone,time),ym=today.slice(0,7),day=Number(today.slice(8)),notBefore=daytimeAt(config,time);
     const leases=db.all("SELECT l.*,a.owner_id,a.title AS apartment_title FROM leases l JOIN apartments a ON a.id=l.apartment_id WHERE l.status IN ('active','ending') AND EXISTS(SELECT 1 FROM lease_members lm WHERE lm.lease_id=l.id)");
+    const running=[];
     for(const l of leases) {
         const user=db.get('SELECT * FROM users WHERE id=?',l.owner_id),apartment=db.get('SELECT * FROM apartments WHERE id=?',l.apartment_id);
         const ending=db.get("SELECT payload FROM records WHERE lease_id=? AND kind='termination' AND status='accepted'",l.id);
@@ -845,40 +886,85 @@ export function generateRecurring(db,config,time=Date.now()) {
                 if(due<l.start) due=l.start; // First month: no deadline before the lease itself.
                 if(due>end||due>dateInZone(config.timezone,time+r.advance_days*86400000)||ruleCharge(db,base,month)) continue;
                 const dedupe=base.legacy?`charge:${l.id}:${month}`:`recurring:${base.id}:${month}`;
-                insertRecord(db,user,{lease:l,apartment,owner:true,system:true},'charge','pending',r.title+' за '+monthText(month),{amount:r.amount,confirmed:0,due,period:month,payments:[],claims:[],claim:null,...shareSnapshot(db,l,r.amount),rule_id:base.id},'shared',dedupe);
+                insertRecord(db,user,{lease:l,apartment,owner:true,system:true,notBefore},'charge','pending',r.title+' за '+monthText(month),{amount:r.amount,confirmed:0,due,period:month,payments:[],claims:[],claim:null,...shareSnapshot(db,l,r.amount),rule_id:base.id},'shared',dedupe);
             }
         }
-        if(l.start>today||l.end<today) continue;
-        const meterDue=Number(dueDate(ym,l.meter_day).slice(8));
-        const pending=visibleMeters(db,l).some(m=>!db.get('SELECT 1 FROM meter_values WHERE meter_id=? AND period=?',m.id,ym));
-        if(l.meters_enabled&&pending&&[meterDue-3,meterDue].includes(day)) for(const uid of [...managerIds(db,l.apartment_id),...memberIds(db,l.id)]) pushNotification(db,uid,'Пора передать показания',`${l.apartment_title} · ${unitName(db,l)}\nЗа ${monthText(ym)}, до ${humanDate(dueDate(ym,l.meter_day))}`,null,`meter:${l.id}:${uid}:${today}`,'reminders',{target:'m_'+l.id});
+        // A lease ended by an accepted termination stops reminding after its agreed date.
+        if(l.start<=today&&end>=today) running.push({l,end});
+    }
+    // Reminders wait for the daytime window; their day keys make each one go out once, when it opens.
+    if(notBefore) return;
+    for(const {l,end} of running) {
+        meterReminders(db,l,ym,day,today);
         const endDays=Math.ceil((Date.parse(end)-Date.parse(today))/86400000);
         if([30,7,1,0].includes(endDays)) for(const uid of [...managerIds(db,l.apartment_id),...memberIds(db,l.id)]) pushNotification(db,uid,'Срок аренды заканчивается',`${l.apartment_title} · ${unitName(db,l)}\nДата окончания: ${humanDate(end)}`,null,`lease-end:${l.id}:${uid}:${today}`,'reminders',{target:'l_'+l.id});
     }
     monthEndDigest(db,config,time);
-    for(const r of db.all("SELECT * FROM records WHERE kind IN ('charge','visit') AND status NOT IN ('paid','cancelled','completed')").map(decode)) {
-        // Utilities have no per-charge reminders: tenants get the month-end digest instead.
-        if(r.kind==='charge'&&r.payload.category==='utilities') continue;
-        const l=db.get('SELECT * FROM leases WHERE id=?',r.lease_id);if(l.status==='ended') continue;
-        const a=db.get('SELECT * FROM apartments WHERE id=?',r.apartment_id);
-        let remind=false,title='',detail='';
-        if(r.kind==='charge'&&['pending','partial','claimed'].includes(r.status)) {
-            const delta=Math.round((Date.parse(r.payload.due)-Date.parse(today))/86400000);remind=[3,1,0,-1,-7].includes(delta);
-            title=r.status==='claimed'?'Ожидается подтверждение оплаты':delta<0?'Проверьте просроченный платёж':'Скоро срок платежа';
-            detail=`${r.title}\nОсталось подтвердить: ${formatMoney(r.payload.amount-r.payload.confirmed)}. Срок: ${humanDate(r.payload.due)}`;
+    chargeReminders(db,config,time,today);
+}
+// Tenants photograph the meters: they get «Пора передать показания» three days before the day and
+// on the day. Owners are not asked to send anything; they hear only when the day passed with nothing.
+function meterReminders(db,l,ym,day,today) {
+    if(!l.meters_enabled) return;
+    const dueOn=dueDate(ym,l.meter_day),dueDay=Number(dueOn.slice(8));
+    if(l.start>dueOn) return; // Moved in after this month's day: the first readings are next month.
+    const missing=visibleMeters(db,l).filter(m=>!db.get('SELECT 1 FROM meter_values WHERE meter_id=? AND period=?',m.id,ym));
+    if(!missing.length) return;
+    const place=`${l.apartment_title} · ${unitName(db,l)}`,list=ms=>ms.map(m=>'· '+m.label).join('\n');
+    if([dueDay-3,dueDay].includes(day)) for(const uid of memberIds(db,l.id)) pushNotification(db,uid,day===dueDay?'Сегодня последний день для показаний':'Пора передать показания',`Сфотографируйте счётчики и отправьте цифры с фото в Ключах до ${humanDate(dueOn)}:\n${list(missing)}\n${place}`,null,`meter:${l.id}:${uid}:${today}`,'reminders',{target:'m_'+l.id});
+    // A meter set up after the day is not «missed».
+    const late=missing.filter(m=>!m.baseline_at||m.baseline_at.slice(0,10)<=dueOn);
+    if(day===dueDay+1&&late.length) for(const uid of managerIds(db,l.apartment_id)) pushNotification(db,uid,'Показания не переданы',`Жильцы не передали показания за ${monthText(ym)}, срок был ${humanDate(dueOn)}:\n${list(late)}\n${place}`,null,`meter-missed:${l.id}:${uid}:${ym}`,'reminders',{target:'m_'+l.id});
+}
+// One message per person, apartment and kind a day, bills oldest first:
+//  pay     — tenant: own remainder, 3 days before the due date, on the day and a week late;
+//  late    — owners: what is still unpaid and unmarked the day after the due date;
+//  confirm — owners: tenants' «передал / перевёл» marks waiting for them, the day after a mark,
+//            a week after, then every 30 days. Tenants never get «waiting for confirmation».
+// Utilities have no per-charge reminders (the month-end digest covers them); visits keep their own.
+function chargeReminders(db,config,time,today) {
+    const days=(a,b)=>Math.round((Date.parse(a)-Date.parse(b))/86400000),buckets=new Map(),waiting=new Map(),nudge=new Set();
+    const put=(uid,a,kind,line)=>{const k=`${kind}:${uid}:${a.id}`;if(!buckets.has(k)) buckets.set(k,{uid,a,kind,lines:[]});buckets.get(k).lines.push(line);};
+    const name=id=>{const x=db.get('SELECT * FROM users WHERE id=?',id);return x?whoName(x):'Жилец';};
+    for(const r of db.all("SELECT * FROM records WHERE kind IN ('charge','visit') AND status NOT IN ('paid','cancelled','completed') ORDER BY created_at").map(decode)) {
+        const l=db.get('SELECT * FROM leases WHERE id=?',r.lease_id);if(!l||l.status==='ended') continue;
+        const a=db.get('SELECT * FROM apartments WHERE id=?',r.apartment_id),members=memberIds(db,l.id),place=`${a.title} · ${unitName(db,l)}`;
+        if(r.kind==='visit') {
+            const diff=Date.parse(r.payload.start)-time;
+            if(r.status!=='accepted'||diff<=0||diff>24*3600000) continue;
+            const text=`${r.payload.reason}\n${new Date(r.payload.start).toLocaleString('ru-RU',{timeZone:config.timezone})} (${config.timezone})\n${place}`;
+            for(const uid of [...managerIds(db,a),...members]) pushNotification(db,uid,'Скоро согласованное посещение',text,r.id,`due:${r.id}:${r.version}:${uid}:${today}`,'reminders');
+            continue;
         }
-        if(r.kind==='visit'&&r.status==='accepted') {const diff=Date.parse(r.payload.start)-time;remind=diff>0&&diff<=24*3600000;title='Скоро согласованное посещение';detail=`${r.payload.reason}\n${new Date(r.payload.start).toLocaleString('ru-RU',{timeZone:config.timezone})} (${config.timezone})`;}
-        if(!remind) continue;
-        const place=`${a.title} · ${unitName(db,l)}`,members=memberIds(db,l.id),key=uid=>`due:${r.id}:${r.version}:${uid}:${today}`;
-        for(const uid of managerIds(db,a)) pushNotification(db,uid,title,`${detail}\n${place}`,r.id,key(uid),'reminders');
-        if(r.kind!=='charge') { for(const uid of members) pushNotification(db,uid,title,`${detail}\n${place}`,r.id,key(uid),'reminders'); continue; }
-        // Tenants hear about their own part only; whoever already paid or handed it over is left alone.
-        const delta=Math.round((Date.parse(r.payload.due)-Date.parse(today))/86400000),shares=sharesOf(r.payload,members);
-        for(const uid of members) {
-            const left=remainingBy(r.payload,uid,members);
-            if(left<=0) continue;
-            pushNotification(db,uid,delta<0?'Проверьте просроченный платёж':'Скоро срок платежа',`${r.title}\nВаша доля: ${formatMoney(shares[uid]||left)}. Осталось оплатить: ${formatMoney(left)}. Срок: ${humanDate(r.payload.due)}\n${place}`,r.id,key(uid),'reminders');
+        if(r.payload.category==='utilities'||!['pending','partial','claimed'].includes(r.status)) continue;
+        const p=r.payload,delta=days(p.due,today),claims=claimsOf(p),shares=sharesOf(p,members);
+        const due=p.due,open=p.amount-p.confirmed-claims.reduce((n,c)=>n+c.amount,0);
+        // A bill announced today is not reminded about the same day.
+        const fresh=dateInZone(config.timezone,Date.parse(r.created_at))===today;
+        if(!fresh&&[3,0,-7].includes(delta)&&r.visibility!=='owner') for(const uid of members) {
+            const left=remainingBy(p,uid,members);
+            if(left>0) put(uid,a,'pay',{due,delta,id:r.id,amount:left,text:`${r.title} — ${formatMoney(left)}${shares[uid]&&shares[uid]!==left?` (доля ${formatMoney(shares[uid])})`:''}, до ${humanDate(due)}`});
         }
+        if(!fresh&&delta===-1&&open>0) for(const uid of managerIds(db,a)) put(uid,a,'late',{due,delta,id:r.id,amount:open,text:`${r.title} — не оплачено ${formatMoney(open)}, срок был ${humanDate(due)}`});
+        for(const c of claims) {
+            const since=days(today,dateInZone(config.timezone,Date.parse(c.at)));
+            if(since===1||since===7||(since>7&&(since-7)%30===0)) nudge.add(a.id);
+            const forWhom=c.for_user_id&&c.for_user_id!==c.user_id?` за ${name(c.for_user_id)}`:'';
+            if(!waiting.has(a.id)) waiting.set(a.id,{a,lines:[]});
+            waiting.get(a.id).lines.push({due,delta,id:r.id,amount:c.amount,text:`${r.title}: ${name(c.user_id)}${forWhom} — ${formatMoney(c.amount)} ${c.method==='cash'?'наличными':'переводом'}, ${humanDate(c.paid_on||c.at.slice(0,10))}`});
+        }
+    }
+    // When any mark of an apartment is due for a nudge, the message lists all marks still waiting there.
+    for(const id of nudge) {const w=waiting.get(id);for(const uid of managerIds(db,w.a)) for(const line of w.lines) put(uid,w.a,'confirm',line);}
+    for(const b of buckets.values()) {
+        b.lines.sort((x,y)=>x.due<y.due?-1:x.due>y.due?1:0);
+        const total=b.lines.reduce((n,x)=>n+x.amount,0),one=b.lines.length===1,soonest=Math.min(...b.lines.map(x=>x.delta));
+        const [title,head,tail]=b.kind==='pay'?[soonest<0?'Просрочена оплата':soonest===0?'Сегодня срок оплаты':'Скоро срок оплаты',one?'':`Ваша доля к оплате: ${formatMoney(total)}`,'Уже отдали наличными — нажмите «Отдал наличными» в Ключах.']
+            :b.kind==='late'?['Не оплачено в срок',one?'':`Всего не оплачено: ${formatMoney(total)}`,'']
+            :['Подтвердите получение денег',`Жильцы отметили оплату на ${formatMoney(total)}. Деньги у вас — подтвердите, нет — отклоните.`,''];
+        const text=[head,...b.lines.map(x=>(one&&!head?'':'· ')+x.text),tail,b.a.title].filter(Boolean).join('\n');
+        // One record opens that payment; several open the apartment.
+        pushNotification(db,b.uid,title,text,one?b.lines[0].id:null,`rem:${b.kind}:${b.uid}:${b.a.id}:${today}`,'reminders',one?{}:{target:'a_'+b.a.id});
     }
 }
 export const formatMoney=n=>new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:n%100?2:0}).format(n/100);

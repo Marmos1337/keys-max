@@ -11,6 +11,8 @@ export function makeConfig(env=process.env) {
     // webhook: Telegram pushes updates to /api/telegram/webhook.
     tgMode:(env.KEYS_TG_MODE||'polling').toLowerCase()};
   c.telegram=!!c.tgBotToken;
+  // Daytime window (business timezone, hours) for reminders and scheduled bills; tests run without it.
+  c.notifyFrom=Number(env.KEYS_NOTIFY_FROM??(mode==='test'?0:9));c.notifyTo=Number(env.KEYS_NOTIFY_TO??(mode==='test'?24:22));
   if(!['polling','webhook'].includes(c.tgMode)) throw Error('KEYS_TG_MODE: polling | webhook');
   if(!/^https:\/\/[^/]+$/.test(c.deepLinkBase)) throw Error('MAX_DEEPLINK_BASE must be an HTTPS origin.');
   new Intl.DateTimeFormat('en-CA',{timeZone:c.timezone}).format();

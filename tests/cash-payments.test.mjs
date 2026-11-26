@@ -96,20 +96,20 @@ test('One tenant pays for the other: for_user_id must be a member and gets the c
   assert.throws(()=>act(f,p,'record_payment',f.owner,{amount:100,for_user_id:f.other.id}),status(400));
 });
 
-test('Reminders: each tenant hears their own remainder; whoever paid or handed over is skipped; owners once',t=>{
+test('Reminders: each tenant hears their own remainder; whoever paid or handed over is skipped; owners are not told «soon»',t=>{
   const f=fixture(t),second=pair(f),due=new Date(Date.now()+3*86400000).toISOString().slice(0,10);
   const r=f.create('charge',{amount:3000000,due,period:due.slice(0,7)},f.owner);
+  f.db.run("UPDATE records SET created_at='2000-01-01T00:00:00.000Z' WHERE id=?",r.id);
   const paid=act(f,r,'record_payment',f.owner,{amount:1000000,payer_id:second.id});
   f.db.run('DELETE FROM notifications');
   f.db.tx(()=>D.generateRecurring(f.db,f.config));
-  const of=id=>f.db.all('SELECT * FROM notifications WHERE user_id=? AND record_id=?',id,r.id);
-  assert.equal(of(f.tenant.id).length,1);assert.match(of(f.tenant.id)[0].text,/Ваша доля: 15\s000\s₽\. Осталось оплатить: 15\s000\s₽/);
-  assert.equal(of(second.id).length,1);assert.match(of(second.id)[0].text,/Осталось оплатить: 5\s000\s₽/);
-  assert.equal(of(f.owner.id).length,1);assert.match(of(f.owner.id)[0].text,/Осталось подтвердить: 20\s000\s₽/);
-  // Second Саня pays the rest, the first hands over cash: neither gets the next reminder.
+  const of=id=>f.db.all("SELECT * FROM notifications WHERE user_id=? AND dedupe LIKE 'rem:%'",id).filter(n=>n.text.includes(r.title));
+  assert.equal(of(f.tenant.id).length,1);assert.match(of(f.tenant.id)[0].text,/15\s000\s₽/);assert.equal(of(f.tenant.id)[0].title,'Скоро срок оплаты');
+  assert.equal(of(second.id).length,1);assert.match(of(second.id)[0].text,/5\s000\s₽ \(доля 15\s000\s₽\)/);
+  assert.equal(of(f.owner.id).length,0,'owners are not reminded before the due date');
+  // Second Саня pays the rest, the first hands over cash: neither gets the next reminder, nobody is told «ждёт подтверждения» today.
   const rest=act(f,paid,'record_payment',f.owner,{amount:500000,payer_id:second.id});act(f,rest,'claim',f.tenant);
   f.db.run('DELETE FROM notifications');
   f.db.tx(()=>D.generateRecurring(f.db,f.config));
-  assert.equal(of(f.tenant.id).length,0);assert.equal(of(second.id).length,0);
-  assert.equal(of(f.owner.id).length,1);assert.equal(of(f.owner.id)[0].title,'Ожидается подтверждение оплаты');
+  assert.equal(of(f.tenant.id).length,0);assert.equal(of(second.id).length,0);assert.equal(of(f.owner.id).length,0);
 });

@@ -123,7 +123,11 @@ test('Co-owners: reminders go to each owner once',t=>{
   const f=fixture(t),{co}=family(f);
   f.db.run('DELETE FROM notifications');
   D.generateRecurring(f.db,f.config);D.generateRecurring(f.db,f.config);
-  const byTitle=id=>f.db.all('SELECT title,COUNT(*) n FROM notifications WHERE user_id=? GROUP BY title,record_id',id);
+  // Only this apartment: the main owner also has a second demo flat the co-owner is not part of.
+  const apt=f.lease.apartment_id,leaseIds=f.db.all('SELECT id FROM leases WHERE apartment_id=?',apt).map(x=>x.id);
+  const byTitle=id=>f.db.all('SELECT title,record_id,dedupe FROM notifications WHERE user_id=?',id)
+    .filter(n=>(n.record_id&&f.db.get('SELECT 1 FROM records WHERE id=? AND apartment_id=?',n.record_id,apt))||[apt,...leaseIds].some(x=>String(n.dedupe||'').includes(x)))
+    .reduce((m,n)=>{const k=n.title+'|'+n.record_id;m.set(k,{title:n.title,n:(m.get(k)?.n||0)+1});return m;},new Map()).values().toArray();
   assert.ok(byTitle(co.id).every(x=>x.n===1));assert.deepEqual(byTitle(co.id).map(x=>x.title).sort(),byTitle(f.owner.id).map(x=>x.title).sort());
   assert.deepEqual(managerIds(f.db,f.lease.apartment_id),[f.owner.id,co.id]);
 });
