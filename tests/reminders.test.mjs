@@ -76,7 +76,7 @@ test('Cash mark notification: owners only; the tenant paid for hears it separate
   act(f,r,'claim',f.tenant,{method:'cash',for_user_id:mate,amount:100000});
   const own=f.db.all('SELECT * FROM notifications WHERE user_id=?',f.owner.id);
   assert.equal(own.length,1);assert.match(own[0].title,/передал наличными .* — подтвердите получение/);
-  assert.equal((own[0].text.match(/Илья Соколов/g)||[]).length,1,'name once');
+  assert.equal(((own[0].title+'\n'+own[0].text).match(/Илья Соколов/g)||[]).length,1,'name once, in the title');assert.match(own[0].text,/^Начислено/);
   const theirs=f.db.all('SELECT * FROM notifications WHERE user_id=?',mate);
   assert.equal(theirs.length,1);assert.equal(theirs[0].title,'Илья Соколов отметил оплату за вас');assert.doesNotMatch(theirs[0].text,/подтвердите/);
 });

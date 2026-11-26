@@ -13,7 +13,7 @@ test('Cash: tenant marks a hand-over with date and photo, owner confirms receipt
   assert.equal(claimed.status,'claimed');const c=claimed.payload.claims[0];
   assert.equal(c.method,'cash');assert.equal(c.paid_on,D.dateInZone());assert.deepEqual(c.files,[photo]);
   assert.equal(f.db.get('SELECT record_id FROM files WHERE id=?',photo).record_id,r.id,'photo stays with the record');
-  const note=f.db.get('SELECT text FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 1',f.owner.id).text;
+  const note=f.db.get("SELECT title||' '||text AS t FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT 1",f.owner.id).t;
   assert.match(note,/передал наличными/);assert.match(note,/подтвердите получение/);
   const paid=act(f,claimed,'confirm',f.owner,{claim_id:c.id});
   assert.equal(paid.status,'paid');assert.equal(paid.payload.confirmed,3000000);assert.equal(paid.payload.payments[0].method,'cash');

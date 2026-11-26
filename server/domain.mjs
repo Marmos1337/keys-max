@@ -60,15 +60,23 @@ export function notifyOther(db, u, ctx, title, recordId, visibility = 'shared', 
     if(!detail&&recordId) {
         const r=decode(db.get('SELECT * FROM records WHERE id=?',recordId)),p=r?.payload||{};
         // A scheduled bill is not the owner's message; a label that already names the actor is not repeated.
-        detail=ctx.system?`Новое начисление: ${title}`:title.startsWith(whoName(u))?title:`${whoName(u)}: ${title}`;
+        // The title already says who did what: the text does not repeat it.
+        detail=ctx.system?`Новое начисление: ${title}`:title.startsWith(whoName(u))?'':`${whoName(u)}: ${title}`;
         if(p.description) detail+='\n'+p.description.slice(0,700);
         if(r?.kind==='charge') detail+=`\nНачислено: ${formatMoney(p.amount)}. Подтверждено: ${formatMoney(p.confirmed)}. Оплатить до ${humanDate(p.due)}`;
         if(r?.kind==='visit') detail+='\n'+p.reason+'\n'+new Date(p.start).toLocaleString('ru-RU',{timeZone:process.env.TZ||'Europe/Moscow'});
-        if(r?.kind==='reading') detail+='\n'+((p.values||[]).length?p.values.map(v=>`${v.label}: ${v.value/1000} ${v.unit}`).join('\n'):`Фото счётчиков: ${db.get('SELECT COUNT(*) AS n FROM files WHERE record_id=?',recordId).n}`);
+        if(r?.kind==='reading') {
+            // Owners read the month at a glance: the number, what was used since last time, its cost if priced.
+            const n=x=>(x/1000).toLocaleString('ru-RU',{maximumFractionDigits:3});
+            detail+='\n'+(p.values||[]).map(v=>`${v.label}: ${n(v.value)} ${v.unit}${v.consumption!=null?` · расход ${n(v.consumption)} ${v.unit}`:''}${v.cost!=null?` · ${formatMoney(v.cost)}`:''}`).join('\n');
+            const photos=db.get('SELECT COUNT(*) AS n FROM files WHERE record_id=?',recordId).n;
+            if(photos) detail+=`\nФото: ${photos}`;
+        }
         if(r?.kind==='purchase') detail+='\n'+formatMoney(p.amount);
         if(r?.kind==='ticket'&&p.result) detail+='\nРезультат: '+p.result;
     }
-    for (const target of targets) pushNotification(db,target,title,`${detail || `${whoName(u)}: ${title}`}\n${place}`,recordId,null,'events',extra);
+    detail=detail.replace(/^\n+/,'');
+    for (const target of targets) pushNotification(db,target,title,`${detail || (title.startsWith(whoName(u)) ? '' : `${whoName(u)}: ${title}`)}\n${place}`.replace(/^\n/,''),recordId,null,'events',extra);
 }
 export function attach(db, u, lease, recordId, ids) { for (const id of V.attachmentIds(ids)) {
     const f = db.get('SELECT * FROM files WHERE id=?', id);
