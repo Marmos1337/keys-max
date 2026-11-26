@@ -22,8 +22,10 @@ async function tick() {
     try {
         processInbox(db, config);
         if (Date.now() - lastRecurring > 60000) {
-            db.tx(() => generateRecurring(db, config));
             lastRecurring = Date.now();
+            // Bills and reminders failing must not hold back messages already in the outbox.
+            try { db.tx(() => generateRecurring(db, config)); }
+            catch (e) { console.error(JSON.stringify({ level: 'recurring_error', message: e.message, stack: String(e.stack || '').split('\n').slice(0, 4).join(' | ') })); }
             db.run('DELETE FROM sessions WHERE expires<?', Date.now());
             db.run('DELETE FROM idempotency WHERE created_at<?', Date.now() - 7 * 86400000);
             // Telegram may reuse update ids after a quiet week; old handled rows must not shadow new updates.

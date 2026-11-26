@@ -12,7 +12,9 @@ export function makeConfig(env=process.env) {
     tgMode:(env.KEYS_TG_MODE||'polling').toLowerCase()};
   c.telegram=!!c.tgBotToken;
   // Daytime window (business timezone, hours) for reminders and scheduled bills; tests run without it.
-  c.notifyFrom=Number(env.KEYS_NOTIFY_FROM??(mode==='test'?0:9));c.notifyTo=Number(env.KEYS_NOTIFY_TO??(mode==='test'?24:22));
+  const hour=(v,d)=>v===undefined||v===''?d:Number(v);
+  c.notifyFrom=hour(env.KEYS_NOTIFY_FROM,mode==='test'?0:9);c.notifyTo=hour(env.KEYS_NOTIFY_TO,mode==='test'?24:22);
+  if(![c.notifyFrom,c.notifyTo].every(Number.isInteger)||c.notifyFrom<0||c.notifyTo>24||c.notifyFrom>=c.notifyTo) throw Error('KEYS_NOTIFY_FROM / KEYS_NOTIFY_TO: whole hours, 0 <= from < to <= 24.');
   if(!['polling','webhook'].includes(c.tgMode)) throw Error('KEYS_TG_MODE: polling | webhook');
   if(!/^https:\/\/[^/]+$/.test(c.deepLinkBase)) throw Error('MAX_DEEPLINK_BASE must be an HTTPS origin.');
   new Intl.DateTimeFormat('en-CA',{timeZone:c.timezone}).format();

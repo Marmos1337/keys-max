@@ -66,7 +66,7 @@ test('Cash marks: only owners are asked to confirm, a day after, a week after, t
   const ask=notes(f,f.owner.id).filter(n=>n.title==='Подтвердите получение денег');
   assert.equal(ask.length,1);assert.match(ask[0].text,/наличными/);assert.match(ask[0].text,/Илья Соколов/);
   assert.equal(notes(f,f.tenant.id).length,0);
-  for(const [n,expect] of [[1,0],[6,1],[7,0],[36,1]]) {f.db.run('DELETE FROM notifications');run(f,MSK(shift(d,n)));assert.equal(notes(f,f.owner.id).filter(x=>x.title==='Подтвердите получение денег').length,expect,`day ${n+1} after the mark`);}
+  for(const [n,expect] of [[1,0],[6,1],[7,0],[29,1],[30,0],[59,1]]) {f.db.run('DELETE FROM notifications');run(f,MSK(shift(d,n)));assert.equal(notes(f,f.owner.id).filter(x=>x.title==='Подтвердите получение денег').length,expect,`day ${n+1} after the mark`);}
 });
 
 test('Cash mark notification: owners only; the tenant paid for hears it separately; no doubled name',t=>{
@@ -121,4 +121,28 @@ test('Meters setup: several quick edits give each tenant one message asking for 
   assert.match(q[0].title,/^Пора передать показания за /);assert.match(q[0].text,/Холодная вода/);assert.match(q[0].text,/Горячая вода/);
   assert.ok(f.db.get("SELECT next_attempt FROM outbox WHERE user_id=?",f.tenant.id).next_attempt>Date.now()+4*60000,'sent a few minutes later');
   void meterPhoto;
+});
+
+test('Meters: «Показания не переданы» also when the day is the last of the month',t=>{
+  const f=fixture(t);meterLease(f,31);
+  const y=new Date().getUTCFullYear()+1;f.db.run("UPDATE leases SET start=?,end=? WHERE id=?",`${y}-01-01`,`${y+1}-12-31`,f.lease.id);
+  f.db.run('DELETE FROM meter_values');f.db.run("UPDATE meters SET baseline_at=NULL");f.db.run('DELETE FROM notifications');
+  run(f,MSK(`${y}-05-01`));
+  const n=notes(f,f.owner.id,`meter-missed:${f.lease.id}:%`);
+  assert.equal(n.length,1,'April has 30 days: the day after is 1 May');assert.match(n[0].text,/апрел/);
+});
+
+test('A legacy mark without a time does not break reminders for everybody',t=>{
+  const f=fixture(t),d=today(),broken=bill(f,shift(d,20)),ok=bill(f,shift(d,3));
+  const c=act(f,broken,'claim',f.tenant,{method:'cash'});const p=c.payload;delete p.claims[0].at;p.claim=p.claims[0];
+  f.db.run('UPDATE records SET payload=? WHERE id=?',JSON.stringify(p),broken.id);
+  f.db.run('DELETE FROM notifications');
+  assert.doesNotThrow(()=>run(f,MSK(d)));
+  assert.equal(notes(f,f.tenant.id).length,1,'the other bill is still reminded');void ok;
+});
+
+test('Config: bad notify hours fail at startup instead of silently breaking the window',async()=>{
+  const {makeConfig}=await import('../server/config.mjs');
+  for(const [from,to] of [['abc','22'],['22','9'],['-1','10'],['9','25']]) assert.throws(()=>makeConfig({APP_MODE:'test',KEYS_NOTIFY_FROM:from,KEYS_NOTIFY_TO:to}));
+  assert.equal(makeConfig({APP_MODE:'test',KEYS_NOTIFY_FROM:'',KEYS_NOTIFY_TO:''}).notifyFrom,0,'empty = default');
 });

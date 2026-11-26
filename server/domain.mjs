@@ -620,10 +620,10 @@ function notifyMeterUsers(db,u,lease,scope,title) {
         for(const id of memberIds(db,l.id)) {
             if(id===u.id) continue;
             // The previous message of this burst has not gone out yet: replace it with the fresh one.
+            // Nothing of it reached a messenger yet (or it never goes to one): drop it entirely.
             for(const n of db.all("SELECT id,dedupe FROM notifications WHERE user_id=? AND dedupe LIKE ?",id,`meter-setup:${l.id}:${id}:%`)) {
-                const queued=db.all("SELECT id FROM outbox WHERE user_id=? AND status='queued' AND json_extract(body,'$.setup')=?",id,n.dedupe);
-                if(!queued.length) continue;
-                for(const q of queued) db.run('DELETE FROM outbox WHERE id=?',q.id);
+                if(db.get("SELECT 1 FROM outbox WHERE user_id=? AND status!='queued' AND json_extract(body,'$.setup')=?",id,n.dedupe)) continue;
+                db.run("DELETE FROM outbox WHERE user_id=? AND status='queued' AND json_extract(body,'$.setup')=?",id,n.dedupe);
                 db.run('DELETE FROM notifications WHERE id=?',n.id);
             }
             const key=`meter-setup:${l.id}:${id}:${randomUUID()}`;
@@ -894,13 +894,20 @@ export function generateRecurring(db,config,time=Date.now()) {
     }
     // Reminders wait for the daytime window; their day keys make each one go out once, when it opens.
     if(notBefore) return;
-    for(const {l,end} of running) {
+    for(const {l,end} of running) guarded('lease',l.id,()=>{
         meterReminders(db,l,ym,day,today);
+        meterMissed(db,l,today);
         const endDays=Math.ceil((Date.parse(end)-Date.parse(today))/86400000);
         if([30,7,1,0].includes(endDays)) for(const uid of [...managerIds(db,l.apartment_id),...memberIds(db,l.id)]) pushNotification(db,uid,'Срок аренды заканчивается',`${l.apartment_title} · ${unitName(db,l)}\nДата окончания: ${humanDate(end)}`,null,`lease-end:${l.id}:${uid}:${today}`,'reminders',{target:'l_'+l.id});
-    }
+    });
     monthEndDigest(db,config,time);
     chargeReminders(db,config,time,today);
+}
+// One odd row must not stop reminders for everybody: log it and go on. Reminders only read and
+// enqueue, so a half-done row is at worst one message short.
+function guarded(kind,id,fn) {
+    try { fn(); }
+    catch(e) { console.error(JSON.stringify({level:'reminder_error',kind,id,message:e.message,stack:String(e.stack||'').split('\n').slice(0,4).join(' | ')})); }
 }
 // Tenants photograph the meters: they get «Пора передать показания» three days before the day and
 // on the day. Owners are not asked to send anything; they hear only when the day passed with nothing.
@@ -912,31 +919,39 @@ function meterReminders(db,l,ym,day,today) {
     if(!missing.length) return;
     const place=`${l.apartment_title} · ${unitName(db,l)}`,list=ms=>ms.map(m=>'· '+m.label).join('\n');
     if([dueDay-3,dueDay].includes(day)) for(const uid of memberIds(db,l.id)) pushNotification(db,uid,day===dueDay?'Сегодня последний день для показаний':'Пора передать показания',`Сфотографируйте счётчики и отправьте цифры с фото в Ключах до ${humanDate(dueOn)}:\n${list(missing)}\n${place}`,null,`meter:${l.id}:${uid}:${today}`,'reminders',{target:'m_'+l.id});
+}
+// The day after the readings day (also when that day was the last one of the previous month).
+function meterMissed(db,l,today) {
+    if(!l.meters_enabled) return;
+    const yesterday=new Date(Date.parse(today+'T12:00:00Z')-86400000).toISOString().slice(0,10),ym=yesterday.slice(0,7),dueOn=dueDate(ym,l.meter_day);
+    if(dueOn!==yesterday||l.start>dueOn) return;
     // A meter set up after the day is not «missed».
-    const late=missing.filter(m=>!m.baseline_at||m.baseline_at.slice(0,10)<=dueOn);
-    if(day===dueDay+1&&late.length) for(const uid of managerIds(db,l.apartment_id)) pushNotification(db,uid,'Показания не переданы',`Жильцы не передали показания за ${monthText(ym)}, срок был ${humanDate(dueOn)}:\n${list(late)}\n${place}`,null,`meter-missed:${l.id}:${uid}:${ym}`,'reminders',{target:'m_'+l.id});
+    const late=visibleMeters(db,l).filter(m=>!db.get('SELECT 1 FROM meter_values WHERE meter_id=? AND period=?',m.id,ym)&&(!m.baseline_at||m.baseline_at.slice(0,10)<=dueOn));
+    if(!late.length) return;
+    const place=`${l.apartment_title} · ${unitName(db,l)}`;
+    for(const uid of managerIds(db,l.apartment_id)) pushNotification(db,uid,'Показания не переданы',`Жильцы не передали показания за ${monthText(ym)}, срок был ${humanDate(dueOn)}:\n${late.map(m=>'· '+m.label).join('\n')}\n${place}`,null,`meter-missed:${l.id}:${uid}:${ym}`,'reminders',{target:'m_'+l.id});
 }
 // One message per person, apartment and kind a day, bills oldest first:
 //  pay     — tenant: own remainder, 3 days before the due date, on the day and a week late;
 //  late    — owners: what is still unpaid and unmarked the day after the due date;
 //  confirm — owners: tenants' «передал / перевёл» marks waiting for them, the day after a mark,
-//            a week after, then every 30 days. Tenants never get «waiting for confirmation».
+//            a week after, then on day 30, 60, 90… Tenants never get «waiting for confirmation».
 // Utilities have no per-charge reminders (the month-end digest covers them); visits keep their own.
 function chargeReminders(db,config,time,today) {
     const days=(a,b)=>Math.round((Date.parse(a)-Date.parse(b))/86400000),buckets=new Map(),waiting=new Map(),nudge=new Set();
     const put=(uid,a,kind,line)=>{const k=`${kind}:${uid}:${a.id}`;if(!buckets.has(k)) buckets.set(k,{uid,a,kind,lines:[]});buckets.get(k).lines.push(line);};
     const name=id=>{const x=db.get('SELECT * FROM users WHERE id=?',id);return x?whoName(x):'Жилец';};
-    for(const r of db.all("SELECT * FROM records WHERE kind IN ('charge','visit') AND status NOT IN ('paid','cancelled','completed') ORDER BY created_at").map(decode)) {
-        const l=db.get('SELECT * FROM leases WHERE id=?',r.lease_id);if(!l||l.status==='ended') continue;
+    for(const r of db.all("SELECT * FROM records WHERE kind IN ('charge','visit') AND status NOT IN ('paid','cancelled','completed') ORDER BY created_at").map(decode)) guarded('record',r.id,()=>{
+        const l=db.get('SELECT * FROM leases WHERE id=?',r.lease_id);if(!l||l.status==='ended') return;
         const a=db.get('SELECT * FROM apartments WHERE id=?',r.apartment_id),members=memberIds(db,l.id),place=`${a.title} · ${unitName(db,l)}`;
         if(r.kind==='visit') {
             const diff=Date.parse(r.payload.start)-time;
-            if(r.status!=='accepted'||diff<=0||diff>24*3600000) continue;
+            if(r.status!=='accepted'||diff<=0||diff>24*3600000) return;
             const text=`${r.payload.reason}\n${new Date(r.payload.start).toLocaleString('ru-RU',{timeZone:config.timezone})} (${config.timezone})\n${place}`;
             for(const uid of [...managerIds(db,a),...members]) pushNotification(db,uid,'Скоро согласованное посещение',text,r.id,`due:${r.id}:${r.version}:${uid}:${today}`,'reminders');
-            continue;
+            return;
         }
-        if(r.payload.category==='utilities'||!['pending','partial','claimed'].includes(r.status)) continue;
+        if(r.payload.category==='utilities'||!['pending','partial','claimed'].includes(r.status)) return;
         const p=r.payload,delta=days(p.due,today),claims=claimsOf(p),shares=sharesOf(p,members);
         const due=p.due,open=p.amount-p.confirmed-claims.reduce((n,c)=>n+c.amount,0);
         // A bill announced today is not reminded about the same day.
@@ -947,13 +962,15 @@ function chargeReminders(db,config,time,today) {
         }
         if(!fresh&&delta===-1&&open>0) for(const uid of managerIds(db,a)) put(uid,a,'late',{due,delta,id:r.id,amount:open,text:`${r.title} — не оплачено ${formatMoney(open)}, срок был ${humanDate(due)}`});
         for(const c of claims) {
-            const since=days(today,dateInZone(config.timezone,Date.parse(c.at)));
-            if(since===1||since===7||(since>7&&(since-7)%30===0)) nudge.add(a.id);
+            // Old marks may lack a time: count from the bill's last change instead.
+            const markedAt=[c.at,r.updated_at,r.created_at].map(x=>Date.parse(x)).find(Number.isFinite);
+            const since=days(today,dateInZone(config.timezone,markedAt));
+            if(since===1||since===7||(since>=30&&since%30===0)) nudge.add(a.id);
             const forWhom=c.for_user_id&&c.for_user_id!==c.user_id?` за ${name(c.for_user_id)}`:'';
             if(!waiting.has(a.id)) waiting.set(a.id,{a,lines:[]});
-            waiting.get(a.id).lines.push({due,delta,id:r.id,amount:c.amount,text:`${r.title}: ${name(c.user_id)}${forWhom} — ${formatMoney(c.amount)} ${c.method==='cash'?'наличными':'переводом'}, ${humanDate(c.paid_on||c.at.slice(0,10))}`});
+            waiting.get(a.id).lines.push({due,delta,id:r.id,amount:c.amount,text:`${r.title}: ${name(c.user_id)}${forWhom} — ${formatMoney(c.amount)} ${c.method==='cash'?'наличными':'переводом'}, ${humanDate(c.paid_on||new Date(markedAt).toISOString().slice(0,10))}`});
         }
-    }
+    });
     // When any mark of an apartment is due for a nudge, the message lists all marks still waiting there.
     for(const id of nudge) {const w=waiting.get(id);for(const uid of managerIds(db,w.a)) for(const line of w.lines) put(uid,w.a,'confirm',line);}
     for(const b of buckets.values()) {
