@@ -57,3 +57,14 @@ test('HTTP: meter-baselines route is owner-only and visible in state',async t=>{
   const denied=await f.api('/api/leases/'+lease.id+'/meter-baselines',{method:'POST',body:{values:[{meter_id:m.id,value:1}]}});
   assert.ok([403,404].includes(denied.status));
 });
+
+test('Meters: owners are told to enter the month\'s utilities after a reading; tenants are not; no hint once entered',t=>{
+  const f=setup(t);
+  f.db.tx(()=>D.setBaselines(f.db,f.owner,f.lease.id,{values:[{meter_id:f.water.id,value:100000},{meter_id:f.power.id,value:2000000}]}));
+  const values=valuesFor(f,{[f.water.id]:103500,[f.power.id]:2150000});
+  const r=f.db.tx(()=>D.createRecord(f.db,f.tenant,{lease_id:f.lease.id,kind:'reading',title:'Показания',payload:{values},files:[meterPhoto(f.db,f.lease,f.tenant)]},f.config));
+  const own=f.db.get('SELECT text FROM notifications WHERE user_id=? AND record_id=?',f.owner.id,r.id);
+  assert.match(own.text,/впишите сумму коммуналки за .+«Внести сумму»/);
+  const mine=f.db.all('SELECT text FROM notifications WHERE record_id=? AND user_id!=?',r.id,f.owner.id);
+  assert.ok(mine.every(n=>!/коммуналки/.test(n.text)),'tenants never get the owner hint');
+});

@@ -117,8 +117,8 @@ route('POST', '/api/meters/:id', ({ db, user, body, params }) => D.updateMeter(d
 route('POST', '/api/records', ({ db, user, body, config }) => D.createRecord(db, user, body, config), { mutate: true });
 route('POST', '/api/records/:id/action', ({ db, user, body, params }) => D.actionRecord(db, user, params.id, body), { mutate: true });
 // 0.7 money: utilities split among tenants, bulk cash collection and its undo (any manager).
-route('POST', '/api/apartments/:id/utilities', ({ db, user, body, params }) => createUtilities(db, user, params.id, body), { mutate: true });
-route('POST', '/api/utilities/:group_id', ({ db, user, body, params }) => changeUtilities(db, user, params.group_id, body), { mutate: true });
+route('POST', '/api/apartments/:id/utilities', ({ db, user, body, params, config }) => createUtilities(db, user, params.id, body, config), { mutate: true });
+route('POST', '/api/utilities/:group_id', ({ db, user, body, params, config }) => changeUtilities(db, user, params.group_id, body, config), { mutate: true });
 route('POST', '/api/apartments/:id/cash-collections', ({ db, user, body, params }) => collectCash(db, user, params.id, body), { mutate: true });
 route('POST', '/api/cash-collections/:id/undo', ({ db, user, body, params }) => undoCollection(db, user, params.id, body), { mutate: true });
 route('POST', '/api/records/:id/comments', ({ db, user, body, params }) => D.addComment(db, user, params.id, body), { mutate: true });

@@ -543,7 +543,7 @@ async function clickAction(el) {
     if (act === 'utilities') {
         const a = state.data.apartments.find(x => x.id === (el.dataset.apartment || model(state).a?.id));
         if (!a || !canManage(a)) throw Error('Коммуналку вносят собственники квартиры.');
-        modal('Коммуналка', utilitiesSheet(state.data, a), { initialFocus: '[data-utilities-amount]' });
+        modal('Коммуналка', utilitiesSheet(state.data, a, /^\d{4}-\d{2}$/.test(el.dataset.period || '') ? el.dataset.period : null), { initialFocus: '[data-utilities-amount]' });
         checkUtilitiesMonth(modalRoot.querySelector('[data-form=utilities]'));
         return;
     }

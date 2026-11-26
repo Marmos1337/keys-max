@@ -25,7 +25,7 @@ const add=(f,who,a,body={})=>tx(f,()=>U.createUtilities(f.db,who,a.id,{period:PE
 const change=(f,who,g,body)=>tx(f,()=>U.changeUtilities(f.db,who,g.group_id,{versions:Object.fromEntries(g.records.map(r=>[r.id,f.db.get('SELECT version FROM records WHERE id=?',r.id).version])),...body}));
 const notes=(f,id)=>f.db.all('SELECT * FROM notifications WHERE user_id=? ORDER BY rowid',id);
 
-test('Utilities: one amount split equally among tenants only, one charge per lease, tenants are not messaged',t=>{
+test('Utilities: one amount split equally among tenants only, one charge per lease, each tenant is told their share once',t=>{
   const f=fixture(t),{a,l,s1,s2,mama}=flat(f);
   f.db.run('DELETE FROM notifications');
   const g=add(f,f.owner,a,{note:'Свет и вода'});
@@ -37,7 +37,7 @@ test('Utilities: one amount split equally among tenants only, one charge per lea
   assert.equal(p.people_total,2);assert.equal(p.group_total,300000);assert.equal(p.note,'Свет и вода');
   assert.deepEqual(p.lines,[{label:'Коммуналка',amount:300000}]);assert.equal(p.amount,p.lines.reduce((n,x)=>n+x.amount,0));
   assert.equal(f.db.get('SELECT dedupe FROM records WHERE id=?',r.id).dedupe,`utilities:${a.id}:${PERIOD}:${l.id}`);
-  for(const s of [s1,s2]) assert.equal(notes(f,s.id).length,0,'tenants get no message when utilities are entered');
+  for(const s of [s1,s2]) { const n=notes(f,s.id); assert.equal(n.length,1,'one message per tenant when the month is sent'); assert.match(n[0].title,/^Коммуналка за .+: 1\s500\s₽$/); assert.match(n[0].text,/Ваша доля: 1\s500\s₽ из 3\s000\s₽ на 2 чел\. Оплатить до \d+ [а-я]+ \d{4}\.\nКогда .+отметьте это в приложении/s); assert.equal(n[0].record_id,r.id); }
   assert.equal(notes(f,mama.id).length,0,'the co-owner is not disturbed by the primary owner\'s entry');
   assert.equal(notes(f,f.owner.id).length,0);assert.equal(p.approval,'approved');assert.equal(r.visibility,'shared');
   assert.ok(f.db.get("SELECT 1 FROM events WHERE record_id=? AND visibility='shared'",r.id));
@@ -80,7 +80,7 @@ test('Utilities: rooms get one record each with only their own tenants; other ro
   const st=D.bootstrap(f.db,vera,f.config);
   assert.deepEqual(st.records.filter(r=>r.payload.category==='utilities').map(r=>r.id),[r2.id]);
   assert.ok(!st.people.some(p=>p.id===alice.id||p.id===bob.id));
-  assert.equal(notes(f,vera.id).length,0);
+  const vn=notes(f,vera.id);assert.equal(vn.length,1);assert.match(vn[0].text,/Ваша доля: 1\s000\s₽ из 3\s001\s₽ на 3 чел/);assert.ok(!/Алиса|Борис/.test(vn[0].text),'no other room names');
 });
 
 test('Utilities: edit while untouched keeps the same people; a later joiner is not added; claims block edit and cancel',t=>{
@@ -208,8 +208,8 @@ test('Month-end digest: a tenant who owes nothing gets no digest',t=>{
 const approvalNotes=(f,id)=>notes(f,id).filter(n=>/одобрить/.test(n.title));
 const stateFor=(f,u)=>D.bootstrap(f.db,u,f.config);
 
-test('Utilities approval: a co-owner\'s entry is a draft nobody else sees until the primary owner approves; no tenant push',t=>{
-  const f=fixture(t),{a,s1,mama}=flat(f,{recurring_rent:false});
+test('Utilities approval: a co-owner\'s entry is a draft nobody else sees until the primary owner approves; tenants hear only on approval',t=>{
+  const f=fixture(t),{a,s1,s2,mama}=flat(f,{recurring_rent:false});
   f.db.run('DELETE FROM notifications');
   const g=add(f,mama,a,{publish:true});   // publish is ignored for a co-owner
   const r=g.records[0];
@@ -236,7 +236,9 @@ test('Utilities approval: a co-owner\'s entry is a draft nobody else sees until 
   assert.equal(p.visibility,'shared');assert.equal(p.payload.approval,'approved');assert.equal(p.payload.approved_by,f.owner.id);assert.equal(p.payload.amount,400000);
   assert.ok(stateFor(f,s1).records.some(x=>x.id===r.id));
   assert.match(stateFor(f,s1).events.find(e=>e.record_id===r.id&&/Выставлена/.test(e.title)).title,/Выставлена коммуналка за /);
-  assert.equal(f.db.get('SELECT COUNT(*) n FROM notifications').n,0,'approval pushes nothing to tenants');
+  assert.deepEqual(f.db.all('SELECT user_id FROM notifications').map(n=>n.user_id).sort(),[s1.id,s2.id].sort(),'approval tells each tenant once, nobody else');
+  change(f,f.owner,g,{action:'update',amount:410000});
+  assert.equal(f.db.get('SELECT COUNT(*) n FROM notifications').n,2,'a later edit is silent');
   assert.throws(()=>change(f,f.owner,g,{action:'approve'}),status(409));
   assert.equal(debtOf([{...p,members:[s1.id,'x']}],s1.id).total>0,true);
 });

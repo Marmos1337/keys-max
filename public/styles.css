@@ -975,3 +975,11 @@ body.modal-open { overflow: hidden; }
   .meter-row:has(.meter-input) .meter-input input { width: 100%; }
 }
 .meter-row b { overflow-wrap: break-word; }
+/* Readings record, owners: the month's utilities amount is the next step. */
+.reading-next { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 12px 14px; align-items: center; padding: 18px; margin: 16px 0 14px; background: var(--tone-soft); border: 1px solid transparent; }
+.reading-next > .btn { grid-column: 1 / -1; }
+.reading-next.done { grid-template-columns: auto minmax(0,1fr) auto; }
+.reading-next.done > .btn { grid-column: auto; }
+.reading-next b { display: block; color: var(--tone-ink); }
+.reading-next small { color: var(--muted); font-size: 13px; line-height: 1.45; display: block; margin-top: 3px; }
+@media (max-width: 359px) { .reading-next.done { grid-template-columns: auto minmax(0,1fr); } .reading-next.done > .btn { grid-column: 1 / -1; } }

@@ -2,8 +2,8 @@
 // tenants of every running lease (owners and co-owners never get a share). Stored as one ordinary
 // charge per lease (category 'utilities'), so claims, payments, reminders and 0.6 clients keep working.
 // Each lease's record holds only its own tenants' shares; other rooms see the total and headcount.
-// Tenants get no message when utilities are entered or edited: they hear about them once, in the
-// month-end digest (domain.mjs generateRecurring), and see the charge in the app.
+// Tenants get one message when a month is sent to them (published at once or approved): their share,
+// the total and the due date, held until daytime. Edits are silent; the month-end digest repeats it.
 // Approval: the primary owner publishes at once. A co-owner's new group is a draft (visibility
 // 'owner', payload.approval='pending'), invisible to tenants until the primary owner approves; a
 // co-owner's edit of a published group is kept as payload.pending_change until approved or declined.
@@ -11,7 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { fail } from './auth.mjs';
 import * as V from './validate.mjs';
 import { managedApartment, managerIds, memberIds, unitName } from './rental.mjs';
-import { decode, event, pushNotification, nowISO, monthText, validMonth, formatMoney } from './domain.mjs';
+import { decode, event, pushNotification, nowISO, monthText, validMonth, formatMoney, humanDate, daytimeAt } from './domain.mjs';
 import { equalSplit, claimsOf } from '../public/shares.js';
 
 const LINE = 'Коммуналка';
@@ -39,12 +39,18 @@ const place = (db, a, lease) => `${a.title} · ${unitName(db, lease)}`;
 const isPrimary = (a, u) => a.owner_id === u.id;
 const awaitingApproval = p => p.approval === 'pending';
 // Only the primary owner (apartments.owner_id) is told about co-owners' drafts and proposed changes.
+// One message per tenant when a month reaches them; dedupe keeps a re-approval from repeating it.
+function tellTenants(db, a, records, config) {
+    const notBefore = config ? daytimeAt(config) : 0;
+    for (const r of records) for (const [uid, share] of Object.entries(r.payload.shares || {}))
+        pushNotification(db, uid, `${LINE} за ${monthText(r.payload.period)}: ${formatMoney(share)}`, `Ваша доля: ${formatMoney(share)} из ${formatMoney(r.payload.group_total)} на ${r.payload.people_total} чел. Оплатить до ${humanDate(r.payload.due).replace(/\s*г\.$/, '')}.\nКогда отложите наличные — отметьте это в приложении.\n${a.title}`, r.id, `util-sent:${r.payload.group_id}:${uid}`, 'events', { notBefore });
+}
 const tellPrimary = (db, a, title, text, recordId, dedupe = null) => pushNotification(db, a.owner_id, title, `${text}\n${a.title}`, recordId, dedupe, 'events', { target: 'a_' + a.id });
 
 /** POST /api/apartments/:id/utilities {period, amount, due, note?, publish?}
  * Every new group is a draft (records.visibility='owner', payload.approval='pending') until the primary
  * owner approves it. publish:true («Отправить сразу») skips the draft, and only the primary owner may use it. */
-export function createUtilities(db, u, apartmentId, b) {
+export function createUtilities(db, u, apartmentId, b, config = null) {
     const a = managedApartment(db, u, apartmentId);
     const period = validMonth(b.period), amount = V.integer(b.amount, 'Сумма коммуналки', 1, 10_000_000_00), due = V.date(b.due, 'Срок оплаты'), note = V.text(b.note, 'Комментарий', 500, true);
     const existing = db.get("SELECT json_extract(payload,'$.group_id') AS g FROM records WHERE apartment_id=? AND kind='charge' AND status!='cancelled' AND json_extract(payload,'$.category')='utilities' AND json_extract(payload,'$.period')=? LIMIT 1", a.id, period);
@@ -62,7 +68,9 @@ export function createUtilities(db, u, apartmentId, b) {
         event(db, u, x.lease, `${title}: ${draft ? 'внесено, ждёт одобрения' : 'создано'}`, id, visibility);
     }
     if (draft && !isPrimary(a, u)) tellPrimary(db, a, `${title}: нужно одобрить`, `${u.name}: внесена ${title.toLowerCase()}: ${formatMoney(amount)} — нужно одобрить`, ids[0]);
-    return { group_id: groupId, records: byIds(db, ids) };
+    const records = byIds(db, ids);
+    if (!draft) tellTenants(db, a, records, config);
+    return { group_id: groupId, records };
 }
 
 /** POST /api/utilities/:group_id {action:'update'|'cancel'|'approve'|'decline', amount?, due?, note?, versions:{record_id:version}}
@@ -71,7 +79,7 @@ export function createUtilities(db, u, apartmentId, b) {
  *   is stored as payload.pending_change (the primary owner may edit that in place too, it stays unapproved).
  * approve: primary owner only, publishes the draft or applies pending_change. decline: primary owner only, drops it and tells the author.
  * cancel: only while nothing is paid or claimed; a published group by the primary owner only, a draft also by its author. */
-export function changeUtilities(db, u, groupId, b) {
+export function changeUtilities(db, u, groupId, b, config = null) {
     const action = V.choice(b.action, ['update', 'cancel', 'approve', 'decline'], 'Действие'), rows = groupRows(db, V.text(groupId, 'Коммуналка', 80));
     if (!rows.length) fail(404, 'Коммуналка не найдена.');
     const a = managedApartment(db, u, rows[0].apartment_id), versions = V.own(b.versions), primary = isPrimary(a, u);
@@ -154,5 +162,6 @@ export function changeUtilities(db, u, groupId, b) {
         else evt(r, amount !== oldTotal ? `${monthTitle} изменена: было ${formatMoney(oldTotal)}, стало ${formatMoney(amount)}` : `${monthTitle} изменена: срок или комментарий`, draft ? 'owner' : 'shared');
     }
     if (draft && !primary) tellPrimary(db, a, `${title}: нужно одобрить`, `${u.name}: внесена ${title.toLowerCase()}: ${formatMoney(amount)} — нужно одобрить`, rows[0].id, `util-draft:${groupId}:${rows[0].version}`);
+    if (publish) tellTenants(db, a, byIds(db, rows.map(r => r.id)), config);
     return result();
 }

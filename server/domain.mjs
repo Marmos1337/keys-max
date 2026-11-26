@@ -76,7 +76,15 @@ export function notifyOther(db, u, ctx, title, recordId, visibility = 'shared', 
         if(r?.kind==='ticket'&&p.result) detail+='\nРезультат: '+p.result;
     }
     detail=detail.replace(/^\n+/,'');
-    for (const target of targets) pushNotification(db,target,title,`${detail || (title.startsWith(whoName(u)) ? '' : `${whoName(u)}: ${title}`)}\n${place}`.replace(/^\n/,''),recordId,null,'events',extra);
+    // Readings in, utilities not yet entered for that month: owners are told the next step.
+    let ownerTail='';
+    if(recordId) {
+        const r=decode(db.get('SELECT * FROM records WHERE id=?',recordId));
+        if(r?.kind==='reading'&&r.payload?.period&&!db.get("SELECT 1 FROM records WHERE apartment_id=? AND kind='charge' AND status!='cancelled' AND json_extract(payload,'$.category')='utilities' AND json_extract(payload,'$.period')=? LIMIT 1",ctx.apartment.id,r.payload.period))
+            ownerTail=`\nДальше: впишите сумму коммуналки за ${monthText(r.payload.period)} — кнопка «Внести сумму» в записи с показаниями.`;
+    }
+    const managers=new Set(ownerTail?managerIds(db,ctx.apartment):[]);
+    for (const target of targets) pushNotification(db,target,title,`${detail || (title.startsWith(whoName(u)) ? '' : `${whoName(u)}: ${title}`)}${managers.has(target)?ownerTail:''}\n${place}`.replace(/^\n/,''),recordId,null,'events',extra);
 }
 export function attach(db, u, lease, recordId, ids) { for (const id of V.attachmentIds(ids)) {
     const f = db.get('SELECT * FROM files WHERE id=?', id);

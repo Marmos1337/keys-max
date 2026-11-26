@@ -97,7 +97,7 @@ a:not(.btn) { color: var(--link); }
 /* 03 · Surfaces --------------------------------------------------------------- */
 .surface, .panel { border: 1px solid var(--line); box-shadow: var(--shadow-card); border-radius: var(--radius); }
 .panel.padded, .contract-panel, .timeline, .detail-body.surface, .profile-hero { border-radius: var(--radius-lg); }
-.payment-highlight, .finance-summary, .baseline-card, .claim-card, .people-empty, .documents-banner { border-color: transparent; }
+.payment-highlight, .finance-summary, .baseline-card, .reading-next, .claim-card, .people-empty, .documents-banner { border-color: transparent; }
 .notice { border-radius: var(--radius-inner); font-size: 13px; line-height: 1.5; padding: 14px 16px; }
 .notice[data-tone="neutral"] { background: var(--surface-2); color: var(--muted); }
 .code-box { border-radius: var(--radius-inner); }

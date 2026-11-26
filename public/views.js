@@ -5,7 +5,7 @@ import { ownersSection } from './owners-ui.js';
 import { metersContent as meterSection } from './meters-ui.js';
 import { chargeDetail } from './payments-ui.js';
 import { nameIn } from './people.js';
-import { myDuePanel, freshUtilitiesCard, cashBlock, missingUtilitiesCard, approvalBlock, coOwnerUtilitiesCard, utilityGroups, isDraft, isUtilities, markSeen, monthWord, myShare } from './cash-ui.js';
+import { myDuePanel, freshUtilitiesCard, cashBlock, missingUtilitiesCard, approvalBlock, coOwnerUtilitiesCard, utilityGroups, isDraft, isUtilities, markSeen, monthWord, myShare, readingUtilitiesCard } from './cash-ui.js';
 import { surface, listItem, statCard, segmented, actionTile, navigationRow, pageTone, navPage } from './ui.js';
 import { canManage, isMainOwner, isOwnerSide, ownerNames, tenantIds, isTenant, unitTitle, metersFor, pendingMeters, claimsFor, freeAmount, displayedRule, monthLabel, editableMonth, plannedNext } from './rental-ui.js';
 import { recordTitle, esc, money, number, date, datetime, range, icon, pillIcon, button, section, empty, notice, badge, recordBadge, count, days, dateRange, statusNames, categoryNames, fileSize, kindNames, kindIcon, kindColor, platformLogo, maxLogo } from './utils.js';
@@ -279,7 +279,7 @@ function detail(s) {
         body+=chargeDetail(s,r,a,l);
     }
     if (r.kind === 'reading')
-        body += `<div class="reading-result">${p.values.map(v => `<div>${pillIcon('meter', 'amber')}<span><b>${esc(v.label)}</b><small>Расход: ${number(v.consumption / 1000)} ${esc(v.unit)}${v.cost != null ? ' · ' + money(v.cost) : ''}</small></span><strong>${number(v.value / 1000)}</strong></div>`).join('')}</div>` + notice('Показания сохранены для собственника. Передачу поставщику услуг нужно выполнить отдельно.');
+        body += `<div class="reading-result">${p.values.map(v => `<div>${pillIcon('meter', 'amber')}<span><b>${esc(v.label)}</b><small>Расход: ${number(v.consumption / 1000)} ${esc(v.unit)}${v.cost != null ? ' · ' + money(v.cost) : ''}</small></span><strong>${number(v.value / 1000)}</strong></div>`).join('')}</div>` + (canManage(a) ? readingUtilitiesCard(d, a, p.period) : '') + notice(canManage(a) ? 'Передачу показаний поставщику услуг нужно выполнить отдельно.' : 'Показания сохранены для собственника. Передачу поставщику услуг нужно выполнить отдельно.');
     if (r.kind === 'expense')
         body += `<div class="detail-amount" data-fit-number>${money(p.amount)}</div>` + info('Дата', date(p.date)) + notice('Расход виден только собственнику.', 'neutral', 'shield');
     if (r.kind === 'terms')

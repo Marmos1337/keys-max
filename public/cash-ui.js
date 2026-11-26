@@ -223,9 +223,10 @@ export function utilityGroups(d, apartmentId) {
 }
 /** Month: the one after the latest entry, not later than now; nothing yet → last month.
  * Due: the 10th of the month after it; if that date has passed, the 10th of next month. */
-export function utilitiesDefaults(d, a) {
+export function utilitiesDefaults(d, a, wanted = null) {
     const now = d.business_date, cur = now.slice(0, 7), last = utilityGroups(d, a.id)[0];
-    const month = last ? (addMonth(last.period, 1) > cur ? cur : addMonth(last.period, 1)) : addMonth(cur, -1);
+    // A reading opens the sheet for its own month («Внести сумму» on the readings record).
+    const month = wanted || (last ? (addMonth(last.period, 1) > cur ? cur : addMonth(last.period, 1)) : addMonth(cur, -1));
     let due = dueForMonth(addMonth(month, 1), 10);
     if (due < now) due = dueForMonth(addMonth(cur, 1), 10);
     return { month, due, amount: last?.total || 0, last };
@@ -252,8 +253,8 @@ export function splitPreview(d, a, amount, ids = utilityTenants(d, a)) {
     const k = values.filter(v => v === hi).length;
     return `${tenantsWord(k)} по ${money(hi)}, ${tenantsWord(n - k)} по ${money(lo)}`;
 }
-export function utilitiesSheet(d, a) {
-    const ids = utilityTenants(d, a), def = utilitiesDefaults(d, a);
+export function utilitiesSheet(d, a, month = null) {
+    const ids = utilityTenants(d, a), def = utilitiesDefaults(d, a, month);
     if (!ids.length) return `<div class="form-stack">${notice('В квартире пока нет жильцов: коммуналку не на кого разделить. Сначала пригласите жильцов.', 'amber')}${button('Понятно', 'close-modal', '', 'secondary wide')}</div>`;
     const names = ids.map(id => nameIn(d, id, { fallback: 'Жилец', self: 'вы' })).join(', ');
     return `<form class="form-stack utilities-sheet" data-form="utilities" data-apartment="${esc(a.id)}">
@@ -268,6 +269,16 @@ export function utilitiesSheet(d, a) {
 const utilitiesButtons = a => isMainOwner(a)
     ? `<button type="submit" class="btn primary wide" data-publish="1">Сохранить и отправить</button><button type="submit" class="text-link foot-link" data-publish="0">Сохранить черновик</button>`
     : `<button type="submit" class="btn primary wide" data-publish="0">Сохранить</button>`;
+/** Readings record, owners only: the next step is the month's utilities amount. */
+export function readingUtilitiesCard(d, a, period) {
+    if (!a || !canManage(a) || !utilityTenants(d, a).length) return '';
+    const g = utilityGroups(d, a.id).find(x => x.period === period);
+    if (g) {
+        const state = g.draft ? 'черновик, жильцы ещё не видят' : g.change ? 'изменение ждёт одобрения' : 'жильцы видят свою долю';
+        return `<div class="surface reading-next done" data-tone="green">${pillIcon('check', 'green')}<div><b>Коммуналка за ${esc(monthWord(period))}: ${money(g.total)}</b><small>${esc(state)}</small></div>${button('Открыть', 'open-record', `data-id="${esc(g.records[0].id)}"`, 'secondary small')}</div>`;
+    }
+    return `<div class="surface reading-next" data-tone="amber">${pillIcon('drop', 'amber')}<div><b>Сколько платить за ${esc(monthWord(period))}?</b><small>Впишите сумму коммуналки за месяц. ${esc(splitPreview(d, a, 0))} — каждый увидит свою долю в приложении.</small></div>${button('Внести сумму', 'utilities', `data-apartment="${esc(a.id)}" data-period="${esc(period)}"`, 'primary wide')}</div>`;
+}
 /** The month is already entered: a warning and the way to it, in the place of the save buttons. */
 export function existingUtilitiesNote(d, a, month) {
     const g = utilityGroups(d, a.id).find(x => x.period === month);
