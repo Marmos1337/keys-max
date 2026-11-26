@@ -622,7 +622,7 @@ function notifyMeterUsers(db,u,lease,scope,title) {
             // The previous message of this burst has not gone out yet: replace it with the fresh one.
             // Nothing of it reached a messenger yet (or it never goes to one): drop it entirely.
             for(const n of db.all("SELECT id,dedupe FROM notifications WHERE user_id=? AND dedupe LIKE ?",id,`meter-setup:${l.id}:${id}:%`)) {
-                if(db.get("SELECT 1 FROM outbox WHERE user_id=? AND status!='queued' AND json_extract(body,'$.setup')=?",id,n.dedupe)) continue;
+                if(db.get("SELECT 1 FROM outbox WHERE user_id=? AND status='sent' AND json_extract(body,'$.setup')=?",id,n.dedupe)) continue;
                 db.run("DELETE FROM outbox WHERE user_id=? AND status='queued' AND json_extract(body,'$.setup')=?",id,n.dedupe);
                 db.run('DELETE FROM notifications WHERE id=?',n.id);
             }
@@ -849,16 +849,16 @@ export function monthEndDigest(db,config,time=Date.now()) {
     const today=dateInZone(config.timezone,time),ym=today.slice(0,7),[y,m,d]=today.split('-').map(Number);
     if(d!==new Date(Date.UTC(y,m,0)).getUTCDate()) return;
     const tenants=db.all("SELECT DISTINCT lm.user_id FROM lease_members lm JOIN leases l ON l.id=lm.lease_id WHERE l.status IN ('active','ending')").map(x=>x.user_id);
-    for(const uid of tenants) {
+    for(const uid of tenants) guarded('digest',uid,()=>{
         const charges=db.all(`SELECT r.* FROM records r JOIN leases l ON l.id=r.lease_id JOIN lease_members lm ON lm.lease_id=l.id AND lm.user_id=? WHERE r.kind='charge' AND r.visibility='shared' AND r.status IN ('pending','partial','claimed') AND l.status!='ended'`,uid).map(decode).map(r=>({...r,members:memberIds(db,r.lease_id)}));
         const debt=debtOf(charges,uid);
-        if(debt.total<=0) continue;
+        if(debt.total<=0) return;
         const byId=new Map(charges.map(r=>[r.id,r]));
         let rent=0,utilities=0;
         const lines=debt.items.map(x=>{const r=byId.get(x.id);if(r.payload.category==='utilities') utilities+=x.cap;else rent+=x.cap;return `${r.title} — ${formatMoney(x.cap)}`;});
         const head=[rent&&`аренда ${formatMoney(rent)}`,utilities&&`коммуналка ${formatMoney(utilities)}`].filter(Boolean).join(', ');
         pushNotification(db,uid,`Итог за ${monthText(ym)}`,`Итог за ${monthText(ym)}: ${head} — ваша доля к оплате ${formatMoney(debt.total)}\n${lines.join('\n')}`,null,`digest:${uid}:${ym}`,'reminders');
-    }
+    });
 }
 // 0 inside the daytime window of the business timezone, otherwise the moment it next opens.
 // Scheduled messages (reminders, monthly bills) never arrive at night.
@@ -873,7 +873,7 @@ export function generateRecurring(db,config,time=Date.now()) {
     const today=dateInZone(config.timezone,time),ym=today.slice(0,7),day=Number(today.slice(8)),notBefore=daytimeAt(config,time);
     const leases=db.all("SELECT l.*,a.owner_id,a.title AS apartment_title FROM leases l JOIN apartments a ON a.id=l.apartment_id WHERE l.status IN ('active','ending') AND EXISTS(SELECT 1 FROM lease_members lm WHERE lm.lease_id=l.id)");
     const running=[];
-    for(const l of leases) {
+    for(const l of leases) guarded('lease',l.id,()=>{
         const user=db.get('SELECT * FROM users WHERE id=?',l.owner_id),apartment=db.get('SELECT * FROM apartments WHERE id=?',l.apartment_id);
         const ending=db.get("SELECT payload FROM records WHERE lease_id=? AND kind='termination' AND status='accepted'",l.id);
         const end=ending?JSON.parse(ending.payload).date:l.end;
@@ -891,7 +891,7 @@ export function generateRecurring(db,config,time=Date.now()) {
         }
         // A lease ended by an accepted termination stops reminding after its agreed date.
         if(l.start<=today&&end>=today) running.push({l,end});
-    }
+    });
     // Reminders wait for the daytime window; their day keys make each one go out once, when it opens.
     if(notBefore) return;
     for(const {l,end} of running) guarded('lease',l.id,()=>{
