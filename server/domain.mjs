@@ -844,13 +844,13 @@ export function dueDate(month,day) {
     return month+'-'+String(Math.min(day,last)).padStart(2,'0');
 }
 // Last day of the month (business timezone): one message per tenant, once per month, with what
-// they still owe across rent and utilities. Tenants who owe nothing get nothing.
+// they still owe across utilities and rent already due (next month's rent has its own reminders). Tenants who owe nothing get nothing.
 export function monthEndDigest(db,config,time=Date.now()) {
     const today=dateInZone(config.timezone,time),ym=today.slice(0,7),[y,m,d]=today.split('-').map(Number);
     if(d!==new Date(Date.UTC(y,m,0)).getUTCDate()) return;
     const tenants=db.all("SELECT DISTINCT lm.user_id FROM lease_members lm JOIN leases l ON l.id=lm.lease_id WHERE l.status IN ('active','ending')").map(x=>x.user_id);
     for(const uid of tenants) guarded('digest',uid,()=>{
-        const charges=db.all(`SELECT r.* FROM records r JOIN leases l ON l.id=r.lease_id JOIN lease_members lm ON lm.lease_id=l.id AND lm.user_id=? WHERE r.kind='charge' AND r.visibility='shared' AND r.status IN ('pending','partial','claimed') AND l.status!='ended'`,uid).map(decode).map(r=>({...r,members:memberIds(db,r.lease_id)}));
+        const charges=db.all(`SELECT r.* FROM records r JOIN leases l ON l.id=r.lease_id JOIN lease_members lm ON lm.lease_id=l.id AND lm.user_id=? WHERE r.kind='charge' AND r.visibility='shared' AND r.status IN ('pending','partial','claimed') AND l.status!='ended'`,uid).map(decode).filter(r=>r.payload.category==='utilities'||r.payload.due<=today).map(r=>({...r,members:memberIds(db,r.lease_id)}));
         const debt=debtOf(charges,uid);
         if(debt.total<=0) return;
         const byId=new Map(charges.map(r=>[r.id,r]));

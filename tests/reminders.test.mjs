@@ -146,3 +146,11 @@ test('Config: bad notify hours fail at startup instead of silently breaking the 
   for(const [from,to] of [['abc','22'],['22','9'],['-1','10'],['9','25']]) assert.throws(()=>makeConfig({APP_MODE:'test',KEYS_NOTIFY_FROM:from,KEYS_NOTIFY_TO:to}));
   assert.equal(makeConfig({APP_MODE:'test',KEYS_NOTIFY_FROM:'',KEYS_NOTIFY_TO:''}).notifyFrom,0,'empty = default');
 });
+
+test('Month-end digest: rent not yet due stays out, utilities of the month are in',t=>{
+  const f=fixture(t),d=today(),[y,m]=d.split('-').map(Number),last=`${d.slice(0,7)}-${String(new Date(Date.UTC(y,m,0)).getUTCDate()).padStart(2,'0')}`;
+  bill(f,shift(last,-3),4000000,'Аренда за этот месяц');bill(f,shift(last,5),4000000,'Аренда за следующий месяц');
+  f.db.run('DELETE FROM notifications');run(f,MSK(last));
+  const n=f.db.all("SELECT * FROM notifications WHERE user_id=? AND dedupe LIKE 'digest:%'",f.tenant.id);
+  assert.equal(n.length,1);assert.match(n[0].text,/за этот месяц/);assert.doesNotMatch(n[0].text,/следующий/);
+});
