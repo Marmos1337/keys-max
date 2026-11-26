@@ -63,10 +63,10 @@ test('Cash marks: only owners are asked to confirm, a day after, a week after, t
   const c=act(f,r,'claim',f.tenant,{method:'cash'});
   const p=c.payload;p.claims[0].at=MSK(shift(d,-1),'12:00')&&new Date(MSK(shift(d,-1))).toISOString();f.db.run('UPDATE records SET payload=? WHERE id=?',JSON.stringify(p),r.id);
   f.db.run('DELETE FROM notifications');run(f,MSK(d));
-  const ask=notes(f,f.owner.id).filter(n=>n.title==='Подтвердите получение денег');
-  assert.equal(ask.length,1);assert.match(ask[0].text,/наличными/);assert.match(ask[0].text,/Илья Соколов/);
+  const ask=notes(f,f.owner.id).filter(n=>n.title==='Наличные у жильцов');
+  assert.equal(ask.length,1);assert.match(ask[0].text,/наличными/);assert.match(ask[0].text,/Забрал/);assert.match(ask[0].text,/Илья Соколов/);
   assert.equal(notes(f,f.tenant.id).length,0);
-  for(const [n,expect] of [[1,0],[6,1],[7,0],[29,1],[30,0],[59,1]]) {f.db.run('DELETE FROM notifications');run(f,MSK(shift(d,n)));assert.equal(notes(f,f.owner.id).filter(x=>x.title==='Подтвердите получение денег').length,expect,`day ${n+1} after the mark`);}
+  for(const [n,expect] of [[1,0],[6,1],[7,0],[29,1],[30,0],[59,1]]) {f.db.run('DELETE FROM notifications');run(f,MSK(shift(d,n)));assert.equal(notes(f,f.owner.id).filter(x=>x.title==='Наличные у жильцов').length,expect,`day ${n+1} after the mark`);}
 });
 
 test('Cash mark notification: owners only; the tenant paid for hears it separately; no doubled name',t=>{

@@ -982,7 +982,7 @@ function chargeReminders(db,config,time,today) {
             if(since===1||since===7||(since>=30&&since%30===0)) nudge.add(a.id);
             const forWhom=c.for_user_id&&c.for_user_id!==c.user_id?` за ${name(c.for_user_id)}`:'';
             if(!waiting.has(a.id)) waiting.set(a.id,{a,lines:[]});
-            waiting.get(a.id).lines.push({due,delta,id:r.id,amount:c.amount,text:`${r.title}: ${name(c.user_id)}${forWhom} — ${formatMoney(c.amount)} ${c.method==='cash'?'наличными':'переводом'}, ${humanDate(c.paid_on||new Date(markedAt).toISOString().slice(0,10))}`});
+            waiting.get(a.id).lines.push({due,delta,id:r.id,amount:c.amount,cash:c.method==='cash',text:`${r.title}: ${name(c.user_id)}${forWhom} — ${formatMoney(c.amount)} ${c.method==='cash'?'наличными':'переводом'}, ${humanDate(c.paid_on||new Date(markedAt).toISOString().slice(0,10))}`});
         }
     });
     // When any mark of an apartment is due for a nudge, the message lists all marks still waiting there.
@@ -992,7 +992,9 @@ function chargeReminders(db,config,time,today) {
         const total=b.lines.reduce((n,x)=>n+x.amount,0),one=b.lines.length===1,soonest=Math.min(...b.lines.map(x=>x.delta));
         const [title,head,tail]=b.kind==='pay'?[soonest<0?'Просрочена оплата':soonest===0?'Сегодня срок оплаты':'Скоро срок оплаты',one?'':`Ваша доля к оплате: ${formatMoney(total)}`,'Уже отдали наличными — нажмите «Отдал наличными» в Ключах.']
             :b.kind==='late'?['Не оплачено в срок',one?'':`Всего не оплачено: ${formatMoney(total)}`,'']
-            :['Подтвердите получение денег',`Жильцы отметили оплату на ${formatMoney(total)}. Деньги у вас — подтвердите, нет — отклоните.`,''];
+            // Cash marks mean the money is set aside with the tenants until the owner picks it up.
+            :b.lines.every(x=>x.cash)?['Наличные у жильцов',`Отложено ${formatMoney(total)}. Когда заберёте — нажмите «Забрал» в Ключах.`,'']
+            :['Подтвердите получение денег',`Жильцы отметили оплату на ${formatMoney(total)}. Получили — подтвердите, нет — отклоните.`,''];
         const text=[head,...b.lines.map(x=>(one&&!head?'':'· ')+x.text),tail,b.a.title].filter(Boolean).join('\n');
         // One record opens that payment; several open the apartment.
         pushNotification(db,b.uid,title,text,one?b.lines[0].id:null,`rem:${b.kind}:${b.uid}:${b.a.id}:${today}`,'reminders',one?{}:{target:'a_'+b.a.id});
