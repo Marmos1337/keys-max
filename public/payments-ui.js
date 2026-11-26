@@ -6,7 +6,7 @@ import { nameIn } from './people.js';
 import { chargePeople, cashPill, myCash, myShare, otherWayLink, isUtilities, isDraft, mainOwnerName, monthWord, utilitiesTouched, utilityGroups } from './cash-ui.js';
 import { remainingBy } from './shares.js';
 
-const how = m => m === 'transfer' ? 'переводом' : 'наличными';
+const how = m => m === 'transfer' ? 'переводом' : m === 'offset' ? 'зачётом' : 'наличными';
 const person = (d, id, fallback) => esc(nameIn(d, id, { fallback }));
 const initial = name => esc(String(name || '?').trim()[0] || '?');
 const persons = n => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'человека' : 'человек'}`;
