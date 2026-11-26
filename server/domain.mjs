@@ -600,6 +600,12 @@ export function meterPrevious(db,m,period=null) {
     return value?.value ?? m.baseline;
 }
 const meterKinds=['cold_water','hot_water','gas','electricity','heating','other'];
+// A flat's water meter shows at most 99 999 m³ (5 black drums). A bigger number is a lost comma:
+// «00102,996» typed as 102996 instead of 102,996.
+function waterSane(kind,unit,label,value) {
+    if(['cold_water','hot_water'].includes(kind)&&unit==='м³'&&value>=100000*1000) fail(400,`${label}: на счётчике воды не бывает больше 99 999 м³. Похоже, пропущена запятая — введите как на счётчике, например 102,996.`);
+    return value;
+}
 const meterUnits=['м³','кВт·ч','Гкал','МВт·ч','л','ед.'];
 export function createMeter(db,u,leaseId,b) {
     const {lease}=leaseAccess(db,u,leaseId,{write:true,ownerOnly:true});
@@ -608,7 +614,7 @@ export function createMeter(db,u,leaseId,b) {
     const scheme=kind==='electricity'?V.choice(b.scheme||'single',['single','dual','triple']):'single';
     const tariffs=scheme==='single'?['']:scheme==='dual'?['Т1 · день','Т2 · ночь']:['Т1 · пик','Т2 · ночь','Т3 · полупик'];
     if(db.get('SELECT COUNT(*) AS n FROM meters WHERE apartment_id=? AND active=1',lease.apartment_id).n+tariffs.length>100) fail(400,'На квартиру поддерживается до 100 активных каналов учёта.');
-    const group=randomUUID(),baseline=V.integer(b.baseline??0,'Начальное показание',0,1000000000000),ids=[],price=meterPrice(b.price);
+    const group=randomUUID(),baseline=waterSane(kind,unit,label,V.integer(b.baseline??0,'Начальное показание',0,1000000000000)),ids=[],price=meterPrice(b.price);
     for(const tariff of tariffs) {
       const id=randomUUID();ids.push(id);
       db.run(`INSERT INTO meters(id,lease_id,label,unit,baseline,apartment_id,scope,kind,group_id,tariff,baseline_at,price) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`,id,lease.id,label+(tariff?' — '+tariff:''),unit,baseline,lease.apartment_id,scope,kind,group,tariff,baseline>0?nowISO():null,price);
@@ -651,7 +657,7 @@ export function updateMeter(db,u,id,b) {
     if(b.active===true&&!m.active&&db.get('SELECT COUNT(*) AS n FROM meters WHERE apartment_id=? AND active=1',m.apartment_id).n>=100)fail(400,'Сначала архивируйте ненужный счётчик: предел 100 активных каналов.');
     const hasReadings=!!db.get('SELECT 1 FROM meter_values WHERE meter_id=?',id);
     if(b.baseline!==undefined&&hasReadings) fail(409,'Начальное значение нельзя менять после передачи показаний. При замене архивируйте счётчик и добавьте новый.');
-    const label=b.label===undefined?m.label:V.text(b.label,'Название',80),baseline=b.baseline===undefined?m.baseline:V.integer(b.baseline,'Начальное показание',0,1000000000000);
+    const label=b.label===undefined?m.label:V.text(b.label,'Название',80),baseline=b.baseline===undefined?m.baseline:waterSane(m.kind,m.unit,m.label,V.integer(b.baseline,'Начальное показание',0,1000000000000));
     if(b.active!==undefined&&typeof b.active!=='boolean') fail(400,'Активность счётчика должна быть true или false.');
     const price=b.price===undefined?m.price:meterPrice(b.price),baselineAt=b.baseline!==undefined&&baseline!==m.baseline?nowISO():m.baseline_at;
     db.run('UPDATE meters SET label=?,baseline=?,active=?,price=?,baseline_at=?,version=version+1 WHERE id=?',label,baseline,b.active===undefined?m.active:b.active?1:0,price,baselineAt,id);
@@ -676,7 +682,7 @@ export function setBaselines(db,u,leaseId,b) {
         if(!m||seen.has(m.id)) fail(400,'Счётчики изменились. Обновите экран.');
         seen.add(m.id);
         if(db.get('SELECT 1 FROM meter_values WHERE meter_id=?',m.id)) fail(409,m.label+': жильцы уже передавали показания, стартовое значение не меняется.');
-        const value=V.integer(v.value,m.label,0,1000000000000);
+        const value=waterSane(m.kind,m.unit,m.label,V.integer(v.value,m.label,0,1000000000000));
         db.run('UPDATE meters SET baseline=?,baseline_at=?,version=version+1 WHERE id=?',value,nowISO(),m.id);
         changed.push(`${m.label}: ${value/1000} ${m.unit}`);
     }
@@ -704,7 +710,7 @@ function recordReading(db,u,ctx,p,files,config) {
     if(!photos.length) fail(400,'Прикрепите фото счётчиков: по нему собственник сверит цифры.');
     const values=meters.map(m=>{
         const entries=p.values.filter(v=>v.meter_id===m.id);if(entries.length!==1) fail(400,'Счётчики не совпадают с настройками. Обновите экран.');
-        const value=V.integer(entries[0].value,m.label,0,1000000000000),previous=meterPrevious(db,m,period);
+        const value=waterSane(m.kind,m.unit,m.label,V.integer(entries[0].value,m.label,0,1000000000000)),previous=meterPrevious(db,m,period);
         if(value<previous) fail(400,m.label+': показание меньше предыдущего. При замене добавьте новый счётчик.');
         return {meter_id:m.id,label:m.label,unit:m.unit,scope:m.scope,value,previous,consumption:value-previous,...(m.price!=null?{price:m.price,cost:Math.round((value-previous)*m.price/1000)}:{})};
     });

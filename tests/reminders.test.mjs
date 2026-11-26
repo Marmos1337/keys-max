@@ -154,3 +154,10 @@ test('Month-end digest: rent not yet due stays out, utilities of the month are i
   const n=f.db.all("SELECT * FROM notifications WHERE user_id=? AND dedupe LIKE 'digest:%'",f.tenant.id);
   assert.equal(n.length,1);assert.match(n[0].text,/за этот месяц/);assert.doesNotMatch(n[0].text,/следующий/);
 });
+
+test('Water meters: a number without the comma (102996 m³) is refused with a hint; litres and normal numbers pass',t=>{
+  const f=fixture(t),mk=b=>f.db.tx(()=>D.createMeter(f.db,f.owner,f.lease.id,{kind:'cold_water',unit:'м³',label:'Холодная вода',...b}));
+  assert.throws(()=>mk({baseline:102996000}),e=>e.status===400&&/пропущена запятая/.test(e.message));
+  assert.ok(mk({baseline:102996}).meters.length);
+  assert.ok(mk({label:'Вода в литрах',unit:'л',baseline:102996000}).meters.length);
+});
