@@ -18,6 +18,9 @@
       else dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     }
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+    var bar = dark ? '#0d0d0f' : '#f5f6fa', tc = document.querySelectorAll('meta[name="theme-color"]');
+    for (var i = 0; i < tc.length; i++) tc[i].setAttribute('content', bar);
   } catch (e) {}
   window.__keysPlatform = telegram ? 'telegram' : 'max';
   document.documentElement.dataset.platform = window.__keysPlatform;

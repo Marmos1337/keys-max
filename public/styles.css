@@ -152,6 +152,15 @@
 [data-tone="neutral"], .tile-icon.neutral, .badge.neutral, .notice.neutral { --tone-soft: var(--neutral); --tone-icon: var(--neutral-icon); --tone-strong: var(--neutral-strong); --tone-ink: var(--neutral-ink); }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scrollbar-gutter: stable; }
+html, body { overscroll-behavior: none; }
+:root { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+/* Plain page-to-page navigation (legal documents <-> app): short cross-fade, none for reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+  ::view-transition-old(root) { animation-duration: 120ms; }
+  ::view-transition-new(root) { animation-duration: 200ms; }
+}
 body { margin: 0; min-width: 280px; }
 button, input, textarea, select { font: inherit; color: inherit; }
 button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }

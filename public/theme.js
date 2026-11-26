@@ -10,7 +10,7 @@ export function applyTheme(value=preference){
   document.documentElement.dataset.theme=dark?'dark':'light';
   document.documentElement.style.colorScheme=dark?'dark':'light';
   const colour=getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
-  if(colour)document.querySelector('meta[name="theme-color"]')?.setAttribute('content',colour);
+  if(colour)document.querySelectorAll('meta[name="theme-color"]').forEach(m=>m.setAttribute('content',colour));
   document.querySelectorAll('[data-themed-logo]').forEach(img=>{img.src=dark?'/art/keys-logo-white.png':'/art/keys-logo-black.png';});
   onPainted(colour);
 }
