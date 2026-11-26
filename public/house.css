@@ -132,6 +132,9 @@ button.ui-row:active, .role-card:active, .stat-card.clickable:active { transform
 .switch::after { transition: transform var(--motion-surface) var(--spring); }
 .file-input { border-radius: var(--radius-lg); background: var(--surface-2); color: var(--text); box-shadow: inset 0 0 0 1px var(--line); }
 .file-input.photo-required { box-shadow: inset 0 0 0 1.5px var(--amber-strong); background: var(--amber); }
+/* No photo on «Отправить»: the block itself turns red and says so; the form keeps its height. */
+.file-input.photo-required.is-missing { box-shadow: inset 0 0 0 1.5px var(--red-strong); background: var(--red); }
+.file-input.photo-required.is-missing small { color: var(--red-strong); }
 .file-chosen { border-radius: var(--radius-control); color: var(--text); box-shadow: inset 0 0 0 1px var(--line-strong); }
 .form-error { border-radius: var(--radius-inner); }
 .form-error:not(:empty) { animation: shake 360ms var(--ease); }

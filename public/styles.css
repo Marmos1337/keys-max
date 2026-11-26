@@ -428,7 +428,7 @@ progress::-moz-progress-bar { background: var(--green-strong); border-radius: 10
 .meter-row > div { min-width: 0; }
 .meter-row b { display: block; font-size: 15px; line-height: 1.45; font-weight: 600; overflow-wrap: anywhere; }
 .meter-row small { display: block; color: var(--muted); font-size: 12px; margin-top: 5px; line-height: 1.45; }
-.meter-row input { min-width: 0; width: 112px; max-width: 100%; min-height: 48px; border: 0; border-radius: 14px; background: var(--field-bg); color: var(--text); padding: 11px 12px; font-size: 19px; text-align: right; }
+.meter-row input { min-width: 0; width: calc(9ch + 26px); max-width: 100%; font-variant-numeric: tabular-nums; min-height: 48px; border: 0; border-radius: 14px; background: var(--field-bg); color: var(--text); padding: 11px 12px; font-size: 19px; text-align: right; }
 .meter-row .icon-button { background: var(--tone-soft); }
 .shared-readings { max-height: 380px; overflow-y: auto; padding-right: 6px; }
 
@@ -763,7 +763,7 @@ body.modal-open { overflow: hidden; }
   .meter-row b { font-size: 14px; }
   .meter-row small { font-size: 11px; }
   .meter-row > div { min-width: 0; }
-  .meter-row input { width: 94px; max-width: 100%; font-size: 18px; }
+  .meter-row input { width: calc(8ch + 24px); max-width: 100%; font-size: 18px; }
   .documents-banner { padding: 22px; gap: 12px; }
   .documents-banner h2 { font-size: 20px; }
   .documents-banner p { font-size: 12px; }
@@ -968,3 +968,10 @@ body.modal-open { overflow: hidden; }
 .method-switch span { display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border-radius: var(--radius-pill); font-weight: 600; font-size: 14px; color: var(--muted); transition: background var(--duration) var(--ease), color var(--duration) var(--ease); }
 .method-switch input:checked + span { background: var(--card); color: var(--text); box-shadow: var(--shadow-pill); }
 .method-switch input:focus-visible + span { outline: 2px solid var(--blue-strong); outline-offset: 2px; }
+/* Narrow phones: the reading field takes its own full-width row, so meter names never break mid-word. */
+@media (max-width: 360px) {
+  .meter-row:has(.meter-input) { grid-template-columns: 38px minmax(0,1fr); }
+  .meter-row:has(.meter-input) .meter-input { grid-column: 1 / -1; grid-template-columns: minmax(0,1fr) auto; align-items: center; justify-items: stretch; gap: 10px; }
+  .meter-row:has(.meter-input) .meter-input input { width: 100%; }
+}
+.meter-row b { overflow-wrap: break-word; }

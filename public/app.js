@@ -991,7 +991,12 @@ async function submit(form) {
             message = type === 'utilities-cancel' ? (wasDraft ? 'Черновик удалён' : 'Коммуналка отменена') : type === 'utilities-decline' ? 'Отклонено' : !isMainOwner(a) && !wasDraft ? 'Изменение отправлено на одобрение' : 'Коммуналка изменена';
         }
         if (type === 'readings') {
-            if (!form.querySelector('input[type=file]')?.files.length) throw Error('Приложите фото счётчиков — по нему собственник сверит цифры.');
+            const photoBox = form.querySelector('[data-photo-required]');
+            if (!form.querySelector('input[type=file]')?.files.length) {
+                // Said inside the photo block, in place of its hint: nothing above the button grows.
+                if (photoBox) { photoBox.classList.add('is-missing'); const hint = photoBox.querySelector('small'); if (hint) { hint.dataset.hint ??= hint.textContent; hint.textContent = 'Приложите фото счётчиков — по нему собственник сверит цифры'; } photoBox.scrollIntoView({ block: 'center', behavior: 'smooth' }); return; }
+                throw Error('Приложите фото счётчиков — по нему собственник сверит цифры.');
+            }
             const leaseId = form.dataset.lease, values = pendingMeters(state.data,state.data.leases.find(l=>l.id===leaseId)).map(m => ({ meter_id: m.id, value: parseAmount(data['meter_' + m.id], 1000) })), files = await collectFiles(form, leaseId);
             result = await post('/records', { lease_id: leaseId, kind: 'reading', title: 'Показания счётчиков', payload: { values }, files }, key);
             message = 'Показания переданы собственнику';
@@ -1203,6 +1208,11 @@ if (el.type === 'file') {
     const summary = el.closest('label')?.querySelector('[data-file-summary]');
     if (summary)
         summary.textContent = [...el.files].map(f => f.name).join(' · ') || 'Выбрать файлы';
+    // A chosen photo answers «Приложите фото»: the block and the form error go back to normal.
+    const box = el.closest('[data-photo-required]');
+    if (box && el.files.length) { box.classList.remove('is-missing'); const hint = box.querySelector('small'); if (hint?.dataset.hint) hint.textContent = hint.dataset.hint; }
+    const formError = el.form?.querySelector('.form-error');
+    if (formError && el.files.length) formError.textContent = '';
 } const form = el.closest('form'); if (form)
     delete form.dataset.key; });
 document.addEventListener('input', e => { const f = e.target.closest('form'); if (f)
